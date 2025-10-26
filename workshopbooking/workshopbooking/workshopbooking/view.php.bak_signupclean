@@ -1,0 +1,681 @@
+<?php
+require(__DIR__.'/../../config.php');
+require_once($CFG->libdir.'/completionlib.php');
+require_once($CFG->libdir.'/csvlib.class.php');
+
+$id = required_param('id', PARAM_INT); // Course module ID.
+$action = optional_param('action', '', PARAM_ALPHA);
+
+$groupid = optional_param('sbgroupid', 0, PARAM_INT);
+
+$cm = get_coursemodule_from_id('workshopbooking', $id, 0, false, MUST_EXIST);
+$course = $DB->get_record('course', ['id' => $cm->course], '*', MUST_EXIST);
+$instance = $DB->get_record('workshopbooking', ['id' => $cm->instance], '*', MUST_EXIST);
+
+require_login($course, true, $cm);
+$context = context_module::instance($cm->id);
+/* CSV export after context (clean) */
+if ($action === 'exportcsv') {
+    require_capability('mod/workshopbooking:manage', $context);
+    require_once($CFG->libdir.'/csvlib.class.php');
+    $filtergroupid = optional_param('sbgroupid', 0, PARAM_INT);
+
+    $sql = "SELECT b.id AS id, s.name AS sessionname, s.slot,
+                   s.timestart, s.timeend,
+                   u.id AS userid, u.username, u.firstname, u.lastname, u.email,
+                   b.status, b.timecreated
+              FROM {workshopbooking_booking} b
+              JOIN {workshopbooking_session} s ON s.id = b.sessionid
+              JOIN {user} u ON u.id = b.userid
+             WHERE s.workshopbookingid = :sid";
+    $params = ['sid' => $instance->id];
+    if (!empty($filtergroupid)) { $sql .= " AND s.groupid = :gid"; $params['gid'] = $filtergroupid; }
+    $sql .= " ORDER BY s.timestart ASC, u.lastname ASC, u.firstname ASC";
+
+    $rows = $DB->get_records_sql($sql, $params);
+    while (ob_get_level()) { @ob_end_clean(); }
+
+    $export = new csv_export_writer();
+    $export->set_filename('workshopbooking_participants_'.$instance->id);
+    $export->add_data([
+        get_string('col_session', 'mod_workshopbooking'),
+        get_string('col_slot', 'mod_workshopbooking'),
+        get_string('col_date', 'mod_workshopbooking'),
+        get_string('col_date_end', 'mod_workshopbooking'),
+        get_string('col_userid', 'mod_workshopbooking'), get_string('col_username', 'mod_workshopbooking'),
+        get_string('col_user', 'mod_workshopbooking'),
+        get_string('col_email', 'mod_workshopbooking'),
+        get_string('col_status', 'mod_workshopbooking'),
+        get_string('col_created', 'mod_workshopbooking')
+    ]);
+    foreach ($rows as $r) {
+        $statuslabel = $r->status == 1 ? get_string('status_confirmed','mod_workshopbooking') : ($r->status == 2 ? get_string('status_waitlist','mod_workshopbooking') : get_string('status_booked','mod_workshopbooking'));
+        $export->add_data([
+            $r->sessionname,
+            $r->slot,
+            userdate($r->timestart, '%Y-%m-%d %H:%M'),
+            userdate($r->timeend, '%Y-%m-%d %H:%M'),
+            $r->userid, $r->username,
+            fullname((object)['firstname'=>$r->firstname,'lastname'=>$r->lastname]),
+            $r->email,
+            $statuslabel,
+            userdate($r->timecreated, '%Y-%m-%d %H:%M')
+        ]);
+    }
+    $export->download_file();
+    exit;
+}
+
+
+
+
+
+// ---- helpers: ensure group per session & add/remove membership (safe) ----
+if (!function_exists('workshopbooking_ensure_group_for_session')) {
+    function workshopbooking_ensure_group_for_session($session, $cm, $instance) {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/group/lib.php');
+        // Determine course id
+        $courseid = 0;
+        if (is_object($cm)) {
+            if (!empty($cm->course)) { $courseid = (int)$cm->course; }
+            elseif (!empty($cm->courseid)) { $courseid = (int)$cm->courseid; }
+        }
+        if (!$courseid) { return 0; }
+
+        $slot = isset($session->slot) ? $session->slot : '';
+        $workshopname = preg_replace('/\s*-\s*(VM|NM)$/', '', $session->name);
+        $groupname = $workshopname.' - '.userdate($session->timestart, '%d.%m.%Y').' '.$slot;
+
+        // reuse existing groupid (rename if needed)
+        if (!empty($session->groupid) && $DB->record_exists('groups', ['id'=>$session->groupid, 'courseid'=>$courseid])) {
+            $existing = $DB->get_record('groups', ['id'=>$session->groupid, 'courseid'=>$courseid], 'id,name');
+            if ($existing && !empty($existing->id)) {
+                if ($existing->name !== $groupname) {
+                    $existing->name = $groupname;
+                    try { groups_update_group($existing); } catch (Throwable $e) { /* ignore rename errors */ }
+                }
+                $groupid = (int)$existing->id;
+            }
+        } else {
+
+        } // end reuse block
+        // find by name
+        $existing = $DB->get_record('groups', ['courseid'=>$courseid, 'name'=>$groupname], 'id');
+        if ($existing && !empty($existing->id)) {
+            $groupid = (int)$existing->id;
+        } else {
+            $contextcourse = context_course::instance($courseid);
+            if (!has_capability('moodle/course:managegroups', $contextcourse)) {
+                return 0;
+            }
+            try {
+                $groupid = (int)groups_create_group((object)[
+                    'courseid' => $courseid,
+                    'name' => $groupname,
+                    'timecreated' => time(),
+                    'timemodified' => time()
+                ]);
+            } catch (Throwable $e) {
+                return 0;
+            }
+        }
+
+        // persist on session record
+        try {
+            if (empty($session->groupid) || (int)$session->groupid !== $groupid) {
+                $session->groupid = $groupid;
+                $DB->update_record('workshopbooking_session', $session);
+            }
+        } catch (Throwable $e) { /* ignore */ }
+
+        return $groupid;
+    }
+}
+require_capability('mod/workshopbooking:view', $context);
+
+// SimpleBooking extensions: sessions & actions.
+$action = optional_param('action', '', PARAM_ALPHA);
+
+$sessionid = optional_param('sessionid', 0, PARAM_INT);
+$haskey = optional_param('sesskey', null, PARAM_RAW);
+
+$context = context_module::instance($cm->id);
+/* CSV export after context (clean) */
+if ($action === 'exportcsv') {
+    require_capability('mod/workshopbooking:manage', $context);
+    require_once($CFG->libdir.'/csvlib.class.php');
+    $filtergroupid = optional_param('sbgroupid', 0, PARAM_INT);
+
+    $sql = "SELECT b.id AS id, s.name AS sessionname, s.slot,
+                   s.timestart, s.timeend,
+                   u.id AS userid, u.username, u.firstname, u.lastname, u.email,
+                   b.status, b.timecreated
+              FROM {workshopbooking_booking} b
+              JOIN {workshopbooking_session} s ON s.id = b.sessionid
+              JOIN {user} u ON u.id = b.userid
+             WHERE s.workshopbookingid = :sid";
+    $params = ['sid' => $instance->id];
+    if (!empty($filtergroupid)) { $sql .= " AND s.groupid = :gid"; $params['gid'] = $filtergroupid; }
+    $sql .= " ORDER BY s.timestart ASC, u.lastname ASC, u.firstname ASC";
+
+    $rows = $DB->get_records_sql($sql, $params);
+    while (ob_get_level()) { @ob_end_clean(); }
+
+    $export = new csv_export_writer();
+    $export->set_filename('workshopbooking_participants_'.$instance->id);
+    $export->add_data([
+        get_string('col_session', 'mod_workshopbooking'),
+        get_string('col_slot', 'mod_workshopbooking'),
+        get_string('col_date', 'mod_workshopbooking'),
+        get_string('col_date_end', 'mod_workshopbooking'),
+        get_string('col_userid', 'mod_workshopbooking'), get_string('col_username', 'mod_workshopbooking'),
+        get_string('col_user', 'mod_workshopbooking'),
+        get_string('col_email', 'mod_workshopbooking'),
+        get_string('col_status', 'mod_workshopbooking'),
+        get_string('col_created', 'mod_workshopbooking')
+    ]);
+    foreach ($rows as $r) {
+        $statuslabel = $r->status == 1 ? get_string('status_confirmed','mod_workshopbooking') : ($r->status == 2 ? get_string('status_waitlist','mod_workshopbooking') : get_string('status_booked','mod_workshopbooking'));
+        $export->add_data([
+            $r->sessionname,
+            $r->slot,
+            userdate($r->timestart, '%Y-%m-%d %H:%M'),
+            userdate($r->timeend, '%Y-%m-%d %H:%M'),
+            $r->userid, $r->username,
+            fullname((object)['firstname'=>$r->firstname,'lastname'=>$r->lastname]),
+            $r->email,
+            $statuslabel,
+            userdate($r->timecreated, '%Y-%m-%d %H:%M')
+        ]);
+    }
+    $export->download_file();
+    exit;
+}
+
+
+// If an action is requested but no sesskey is present, append it gracefully and redirect.
+if (!empty($action) && empty($haskey)) {
+    $redir = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id, 'action'=>$action]);
+    if (!empty($sessionid)) { $redir->param('sessionid', $sessionid); }
+    $redir->param('sesskey', sesskey());
+    redirect($redir);
+}
+
+
+if ($action === 'generate' && has_capability('mod/workshopbooking:manage', $context)) {
+    \mod_workshopbooking\local\schema::ensure();
+    require_sesskey();
+    \mod_workshopbooking\local\bookingmanager::create_series($instance, $cm->id);
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), get_string('seriesgenerated', 'mod_workshopbooking'));
+} else if ($action === 'signup' && $sessionid) {
+    require_sesskey();
+    $status = \mod_workshopbooking\local\bookingmanager::book($sessionid, $USER->id, $cm->id, (int)$instance->maxbookingsperuser);
+
+    if ($status == 1) {
+        // Confirmed -> ensure group & add member (safe)
+        $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid], '*', MUST_EXIST);
+        $groupid = workshopbooking_ensure_group_for_session($session, $cm, $instance);
+        if ($groupid) {
+            require_once($CFG->dirroot . '/group/lib.php');
+            try {
+                if (!groups_is_member($groupid, $USER->id)) {
+                    groups_add_member($groupid, $USER->id);
+                }
+            } catch (Throwable $e) { /* ignore group add errors */ }
+        }
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), get_string('signedup_confirmed', 'mod_workshopbooking'));
+    } else if ($status == 2) {
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), get_string('signedup_waitlist', 'mod_workshopbooking');kshopbooking'));
+    } else {
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]));
+    }
+} else if ($action === 'cancel' && $sessionid) {
+    require_sesskey();
+    \mod_workshopbooking\local\bookingmanager::cancel($sessionid, $USER->id);
+
+    // Remove from group if any
+    $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid]);
+    if ($session && !empty($session->groupid)) {
+        require_once($CFG->dirroot . '/group/lib.php');
+        try {
+            if (groups_is_member($session->groupid, $USER->id)) {
+                groups_remove_member($session->groupid, $USER->id);
+            }
+        } catch (Throwable $e) { /* ignore group remove errors */ }
+    }
+
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), get_string('signupremoved', 'mod_workshopbooking'));
+}
+
+
+// Participants list (admin/trainer only).
+if ($action === 'participants' && has_capability('mod/workshopbooking:manage', $context)) {
+    $filtergroupid = optional_param('sbgroupid', 0, PARAM_INT);
+
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('participants_heading', 'mod_workshopbooking'));
+
+    $sql = "SELECT b.id AS id, s.name AS sessionname, s.slot, s.timestart,
+                   u.id AS userid, u.firstname, u.lastname, u.email,
+                   b.status, b.timecreated
+              FROM {workshopbooking_booking} b
+              JOIN {workshopbooking_session} s ON s.id = b.sessionid
+              JOIN {user} u ON u.id = b.userid
+             WHERE s.workshopbookingid = :sid
+               AND b.status IN (1,2)";
+    $params = ['sid'=>$instance->id];
+    if (!empty($filtergroupid)) { $sql .= " AND s.groupid = :gid"; $params['gid'] = $filtergroupid; }
+    $sql .= " ORDER BY s.timestart ASC, u.lastname ASC, u.firstname ASC";
+
+    $recs = $DB->get_records_sql($sql, $params);
+
+    $table = new html_table();
+    $table->head = [
+        get_string('col_session', 'mod_workshopbooking'),
+        get_string('col_date', 'mod_workshopbooking'),
+        get_string('col_user', 'mod_workshopbooking'),
+        get_string('col_email', 'mod_workshopbooking'),
+        get_string('col_status', 'mod_workshopbooking')
+    ];
+    // Build optional per-workshop URL map from instance->workshopnames: 'Name, TT.MM.JJJJ[, URL]'
+    $workshopurlmap = [];
+    if (!empty($instance->multiworkshops) && !empty($instance->workshopnames)) {
+        $lines = preg_split("/\r\n|\r|\n/", trim($instance->workshopnames));
+        foreach ($lines as $ln) {
+            $parts = array_map('trim', explode(',', $ln));
+            if (count($parts) >= 3) {
+                $nm = $parts[0];
+                $url = $parts[2];
+                if (preg_match('/^https?:\/\//i', $url)) { $workshopurlmap[$nm] = $url; }
+            }
+        }
+    }
+
+
+    foreach ($recs as $r) {
+        $date = userdate($r->timestart, get_string('strftimedate', 'langconfig'));
+        $statuslabel = ($r->status == 1) ? get_string('status_confirmed','mod_workshopbooking') : get_string('status_waitlist','mod_workshopbooking');
+        $username = fullname((object)['firstname'=>$r->firstname,'lastname'=>$r->lastname]);
+        $table->data[] = new html_table_row([
+            format_string($r->sessionname),
+            $date,
+            s($username),
+            s($r->email),
+            $statuslabel
+        ]);
+    }
+
+    echo html_writer::table($table);
+    echo $OUTPUT->footer();
+    exit;
+}
+
+// Manual repair: ensure groups + membership (manager only)
+if ($action === 'repairgroups' && has_capability('mod/workshopbooking:manage', $context)) {
+    $coursecontext = context_course::instance($cm->course);
+    require_capability('moodle/course:managegroups', $coursecontext);
+
+    require_once($CFG->dirroot . '/group/lib.php');
+    $allsessions = $DB->get_records('workshopbooking_session', ['workshopbookingid'=>$instance->id]);
+    foreach ($allsessions as $sess) {
+        $gid = workshopbooking_ensure_group_for_session($sess, $cm, $instance);
+        if ($gid) {
+            $booked = $DB->get_records('workshopbooking_booking', ['sessionid'=>$sess->id, 'status'=>1], '', 'id,userid');
+            foreach ($booked as $b) {
+                if (!groups_is_member($gid, $b->userid)) {
+                    groups_add_member($gid, $b->userid);
+                }
+            }
+        }
+    }
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), 'Gruppen wurden repariert.');
+}
+
+
+
+$js = "(function(){var sel=document.getElementById('sbgroupid');if(!sel)return;function sync(){var a=document.getElementById('sbgroupid-hidden-ptcp');var b=document.getElementById('sbgroupid-hidden-csv');if(a)a.value=sel.value;if(b)b.value=sel.value;}sel.addEventListener('change',sync);})();";
+echo html_writer::script($js);
+echo html_writer::end_div();
+
+// Renderer for sessions table.
+echo $OUTPUT->header();
+echo $OUTPUT->heading(format_string($instance->name));
+
+$managebtn = '';
+if (has_capability('mod/workshopbooking:manage', $context)) {
+    $url = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id,'action'=>'generate','sesskey'=>sesskey()]);
+    $managebtn = html_writer::div(html_writer::link($url, get_string('btn_generate_series', 'mod_workshopbooking'), ['class'=>'btn btn-secondary']));
+    
+/* legacy participants/csv menu removed in favor of toolbar */
+$repairurl = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id,'action'=>'repairgroups']); 
+
+echo $managebtn . html_writer::div(html_writer::link($repairurl, 'Gruppen erzeugen', ['class'=>'btn btn-secondary mt-2']), '');
+// ---- Toolbar (filter + buttons) UNDER menu ----
+$curfilter = optional_param('sbgroupid', 0, PARAM_INT);
+$sessiongroups = $DB->get_records_sql(
+    "SELECT DISTINCT g.id, g.name, s.timestart, s.slot
+       FROM {workshopbooking_session} s
+       JOIN {groups} g ON g.id = s.groupid
+      WHERE s.workshopbookingid = :sid
+   ORDER BY s.timestart ASC, CASE WHEN s.slot='VM' THEN 0 ELSE 1 END, g.name ASC",
+   ['sid'=>$instance->id]
+);
+$options = [0 => get_string('all_groups', 'mod_workshopbooking')];
+foreach ($sessiongroups as $g) { $options[$g->id] = format_string($g->name); }
+
+echo html_writer::start_div('workshopbooking-toolbar', ['style' => 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;']);
+echo html_writer::label(get_string('filter_group', 'mod_workshopbooking').' ', 'sbgroupid', false, ['style' => 'margin-right:4px;']);
+echo html_writer::select($options, 'sbgroupid', $curfilter, null, ['id' => 'sbgroupid', 'style' => 'min-width:220px;']);
+
+echo html_writer::start_div('', ['style' => 'display:inline-flex;gap:8px;']);
+// Participants form
+echo html_writer::start_tag('form', ['method' => 'get', 'action' => new moodle_url('/mod/workshopbooking/view.php')]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'id', 'value' => $cm->id]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'participants']);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sbgroupid', 'value' => $curfilter, 'id' => 'sbgroupid-hidden-ptcp']);
+echo html_writer::tag('button', get_string('participants_heading', 'mod_workshopbooking'), ['type' => 'submit', 'class' => 'btn btn-secondary']);
+echo html_writer::end_tag('form');
+
+// CSV form
+echo html_writer::start_tag('form', ['method' => 'get', 'action' => new moodle_url('/mod/workshopbooking/view.php')]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'id', 'value' => $cm->id]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'exportcsv']);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sbgroupid', 'value' => $curfilter, 'id' => 'sbgroupid-hidden-csv']);
+echo html_writer::tag('button', get_string('btn_exportcsv', 'mod_workshopbooking'), ['type' => 'submit', 'class' => 'btn btn-secondary']);
+echo html_writer::end_tag('form');
+echo html_writer::end_div();
+
+$js = "(function(){var sel=document.getElementById('sbgroupid');if(!sel)return;function sync(){var a=document.getElementById('sbgroupid-hidden-ptcp');var b=document.getElementById('sbgroupid-hidden-csv');if(a)a.value=sel.value;if(b)b.value=sel.value;}sel.addEventListener('change',sync);})();";
+echo html_writer::script($js);
+echo html_writer::end_div();
+}
+
+$now = time();
+$sessions = $DB->get_records_select('workshopbooking_session', "workshopbookingid = ? AND timeend > ?", [$instance->id, $now], "timestart ASC");
+if (!$sessions) {
+    echo $OUTPUT->notification(get_string('nosessions', 'mod_workshopbooking'), 'notifymessage');
+} else {
+    $table = new html_table();
+    $table->head = [get_string('session', 'mod_workshopbooking'), get_string('dates', 'mod_workshopbooking'), get_string('slot', 'mod_workshopbooking'), 'min / max / gebucht', get_string('booking', 'mod_workshopbooking'), ''];
+    foreach ($sessions as $s) {
+        $counts = \mod_workshopbooking\local\bookingmanager::session_counts($s->id);
+        $capacity = $s->capacitymin . " / " . $s->capacitymax . " / " . $counts['confirmed'];
+        $durationhours = isset($instance->durationhours) ? (int)$instance->durationhours : (int)$instance->durationdays;$durationhours = max(1, $durationhours);
+$endts = $s->timestart + ($durationhours * 3600);
+$dates = userdate($s->timestart, get_string('strftimedate', 'langconfig')) . ' von ' . userdate($s->timestart, get_string('strftimetime', 'langconfig')) . ' bis ' . userdate($endts, get_string('strftimetime', 'langconfig'));
+        $status = '';
+        $signup = '';
+        
+
+if ($USER->id) {
+    $already = $DB->get_record('workshopbooking_booking', ['sessionid'=>$s->id,'userid'=>$USER->id]);
+    $now = time();
+    $windowopen = (empty($s->bookingopen) || $now >= $s->bookingopen) && (empty($s->bookingclose) || $now <= $s->bookingclose);
+    $isfull = ($counts['confirmed'] >= $s->capacitymax);
+
+    $status = '';
+    $signup = '';
+
+    if ($already && (int)$already->status !== 3) {
+        // Already booked -> show status and cancel link, no signup.
+        $status = ($already->status == 1) ? get_string('status_confirmed','mod_workshopbooking') : get_string('status_waitlist','mod_workshopbooking');
+        $cancelurl = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id,'action'=>'cancel','sessionid'=>$s->id,'sesskey'=>sesskey()]);
+        $signup = html_writer::link($cancelurl, get_string('removesignup', 'mod_workshopbooking'), ['class'=>'btn btn-link']);
+        // Optional "Zum Workshop" link when URL is configured for this workshop name.
+        $basewname = preg_replace('/\s*-\s*(VM|NM)$/', '', $s->name);
+        if (!empty($workshopurlmap[$basewname])) {
+            $signup .= ' | ' . html_writer::link($workshopurlmap[$basewname], get_string('gotoworkshop', 'mod_workshopbooking'), ['class'=>'btn btn-link', 'target'=>'_blank', 'rel'=>'noopener']);
+        }
+    } else if ($isfull) {
+        // Full -> no signup.
+        $status = 'Voll';
+    } else if (!$windowopen) {
+        // Window closed -> no signup.
+        $status = get_string('bookingclosed', 'mod_workshopbooking');
+    } else {
+        // Can sign up.
+        $signupurl = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id,'action'=>'signup','sessionid'=>$s->id,'sesskey'=>sesskey()]);
+        $signup = html_writer::link($signupurl, get_string('signup', 'mod_workshopbooking'), ['class'=>'btn btn-primary']);
+    }
+}
+ $row = new html_table_row([
+            format_string($s->name),
+            $dates,
+            s($s->slot),
+            $capacity,
+            $status,
+            $signup
+        ]);
+        $table->data[] = $row;
+    }
+    echo html_writer::table($table);
+}
+
+echo $OUTPUT->footer();
+exit;
+
+
+$PAGE->set_url(new moodle_url('/mod/workshopbooking/view.php', ['id' => $id]));
+// Export CSV (teachers/managers only).
+if ($action === 'exportcsv') {
+    require_sesskey();
+    require_capability('mod/workshopbooking:export', $context);
+
+    $params = ['sid' => $instance->id];
+    $join = "JOIN {user} u ON u.id = s.userid";
+    if ($groupid > 0) {
+        $join .= " JOIN {groups_members} gm ON gm.userid = s.userid AND gm.groupid = :gid";
+        $params['gid'] = $groupid;
+    }
+
+    $params = ['sid' => $instance->id];
+    $join = "JOIN {user} u ON u.id = s.userid";
+    if ($groupid > 0) {
+        $join .= " JOIN {groups_members} gm ON gm.userid = s.userid AND gm.groupid = :gid";
+        $params['gid'] = $groupid;
+    }
+    $sql = "SELECT u.id, u.firstname, u.lastname, u.email, s.timecreated
+              FROM {workshopbooking_signups} s
+              $join
+             WHERE s.workshopbookingid = :sid
+          ORDER BY s.timecreated ASC";
+$signups = $DB->get_records_sql($sql, $params);
+$csv = new csv_export_writer();
+    $csv->set_filename('workshopbooking_participants_' . $instance->id);
+
+    $csv->add_data([get_string('fullname'), get_string('email'), get_string('signedupon', 'mod_workshopbooking')]);
+    foreach ($signups as $s) {
+        $csv->add_data([fullname($s), $s->email, userdate($s->timecreated)]);
+    }
+    $csv->download_file();
+    exit;
+}
+
+$PAGE->set_title(format_string($instance->name));
+$PAGE->set_heading($course->fullname);
+
+$now = time();
+$open = (!$instance->signupstart || $now >= $instance->signupstart) && (!$instance->signupend || $now <= $instance->signupend);
+
+$signupcount = $DB->count_records('workshopbooking_signups', ['workshopbookingid' => $instance->id]);
+$already = isloggedin() && $DB->record_exists('workshopbooking_signups', [
+    'workshopbookingid' => $instance->id,
+    'userid' => $USER->id
+]);
+$full = ($instance->maxparticipants > 0 && $signupcount >= $instance->maxparticipants);
+
+// Remove a user's signup (managers/teachers only).
+if ($action === 'removesignup') {
+    require_sesskey();
+    require_capability('mod/workshopbooking:manage', $context);
+    $userid = required_param('userid', PARAM_INT);
+    if ($DB->record_exists('workshopbooking_signups', ['workshopbookingid' => $instance->id, 'userid' => $userid])) {
+        $DB->delete_records('workshopbooking_signups', ['workshopbookingid' => $instance->id, 'userid' => $userid]);
+        redirect($PAGE->url, get_string('signupremoved', 'mod_workshopbooking'));
+    } else {
+        redirect($PAGE->url, get_string('cannot_remove', 'mod_workshopbooking'));
+    }
+}
+
+
+// Handle actions (signup/cancel).
+if ($action && confirm_sesskey()) {
+    require_sesskey();
+    if ($action === 'signup') {
+        require_capability('mod/workshopbooking:signup', $context);
+        if ($open && !$full && !$already) {
+            $rec = (object)[
+                'workshopbookingid' => $instance->id,
+                'userid' => $USER->id,
+                'timecreated' => time()
+            ];
+            $DB->insert_record('workshopbooking_signups', $rec);
+            redirect($PAGE->url, get_string('signedup', 'mod_workshopbooking'));
+        } else {
+            redirect($PAGE->url, get_string('cannot_signup', 'mod_workshopbooking'));
+        }
+    } else if ($action === 'cancel') {
+        if ($already && ($instance->signupend == 0 || $now <= $instance->signupend)) {
+            $DB->delete_records('workshopbooking_signups', [
+                'workshopbookingid' => $instance->id,
+                'userid' => $USER->id
+            ]);
+            redirect($PAGE->url, get_string('canceled', 'mod_workshopbooking'));
+        } else {
+            redirect($PAGE->url, get_string('cannot_cancel', 'mod_workshopbooking'));
+        }
+    }
+}
+
+$output = $PAGE->get_renderer('core');
+
+echo $output->header();
+// heading removed – avoid duplicate title
+// Intro output suppressed to avoid duplication; Moodle renders description above.
+// Card container for a more professional layout.
+echo html_writer::start_div('card mb-4 workshopbooking-card');
+echo html_writer::start_div('card-body');
+
+echo html_writer::start_div('d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between mb-2 sb-metrics');
+echo html_writer::start_div('workshopbooking-status');
+
+$availability = [];
+if ($instance->signupstart) {
+    $availability[] = get_string('from', 'mod_workshopbooking') . ': ' . userdate($instance->signupstart);
+}
+if ($instance->signupend) {
+    $availability[] = get_string('to', 'mod_workshopbooking') . ': ' . userdate($instance->signupend);
+}
+if ($availability) {
+    echo html_writer::tag('p', html_writer::span(get_string('availability', 'mod_workshopbooking'), 'badge badge-secondary') . ' ' . implode(' | ', $availability));
+}
+
+$limitlabel = ($instance->maxparticipants > 0)
+    ? get_string('limit_reached', 'mod_workshopbooking', $signupcount . ' / ' . $instance->maxparticipants)
+    : get_string('limit_unlimited', 'mod_workshopbooking', $signupcount);
+
+echo html_writer::tag('p', $limitlabel);
+
+echo html_writer::end_div();
+
+$buttonarea = '';
+if (!isguestuser()) {
+    if (!$already && $open && !$full) {
+        $url = new moodle_url($PAGE->url, ['action' => 'signup', 'sesskey' => sesskey()]);
+        $buttonarea .= $output->single_button($url, get_string('signup', 'mod_workshopbooking'));
+    } else if ($already) {
+        $url = new moodle_url($PAGE->url, ['action' => 'cancel', 'sesskey' => sesskey()]);
+        $buttonarea .= $output->single_button($url, get_string('cancel', 'mod_workshopbooking'));
+    } else if ($full) {
+        $buttonarea .= $output->notification(get_string('full', 'mod_workshopbooking'), \core\output\notification::NOTIFY_WARNING);
+    } else if (!$open) {
+        $buttonarea .= $output->notification(get_string('notopen', 'mod_workshopbooking'), \core\output\notification::NOTIFY_INFO);
+    }
+}
+
+echo $buttonarea;
+// Close card body and container.
+echo html_writer::end_div(); // .workshopbooking-status
+echo html_writer::end_div(); // .card-body
+echo html_writer::end_div(); // .card
+
+
+
+// Groups filter (teachers/managers only)
+if (has_capability('mod/workshopbooking:viewparticipants', $context)) {
+    $filterurl = new moodle_url($PAGE->url, ['id' => $cm->id]);
+    $filterform  = html_writer::start_tag('form', ['method'=>'get','action'=>$filterurl,'class'=>'mform mb-3 sb-filter bdd-filter']);
+    $filterform .= html_writer::empty_tag('input', ['type'=>'hidden','name'=>'id','value'=>$cm->id]);
+    $filterform .= html_writer::start_div('d-flex align-items-center gap-2 flex-wrap');
+    $filterform .= html_writer::tag('label', get_string('groups','group'), ['for'=>'groupid','class'=>'form-label inline-label mr-2 mb-0']);
+    $filterform .= html_writer::start_tag('select', ['name'=>'groupid','id'=>'groupid','class'=>'custom-select']);
+    $filterform .= html_writer::tag('option', get_string('allgroups_local','mod_workshopbooking'), ['value'=>0]);
+    $groups = groups_get_all_groups($course->id);
+    if (!empty($groups)) {
+        foreach ($groups as $g) {
+            $attrs = ['value'=>$g->id];
+            if ((int)$groupid === (int)$g->id) { $attrs['selected'] = 'selected'; }
+            $filterform .= html_writer::tag('option', format_string($g->name), $attrs);
+        }
+    }
+    $filterform .= html_writer::end_tag('select');
+    $filterform .= html_writer::tag('button', get_string('filter'), ['type'=>'submit','class'=>'btn btn-secondary ml-2']);
+    $filterform .= html_writer::end_div();
+    $filterform .= html_writer::end_tag('form');
+    echo $filterform;
+}
+/* EXPORT BUTTON NEAR MAIN AREA */
+if (has_capability('mod/workshopbooking:viewparticipants', $context)) {
+    $exportparams = ['action' => 'exportcsv', 'sesskey' => sesskey()];
+    if ($groupid) { $exportparams['groupid'] = $groupid; }
+    $exporturl = new moodle_url($PAGE->url, $exportparams);
+    echo html_writer::div($output->single_button($exporturl, get_string('exportcsv', 'mod_workshopbooking')), 'mb-3');
+}
+
+
+// Teacher view: show participants.
+if (has_capability('mod/workshopbooking:viewparticipants', $context)) {
+    echo html_writer::start_div('card mt-4 workshopbooking-participants');
+echo html_writer::div(html_writer::tag('h3', get_string('participants', 'mod_workshopbooking'), ['class' => 'card-header h5 mb-0']), '');
+echo html_writer::start_div('card-body');
+    $params = ['sid' => $instance->id];
+    $join = "JOIN {user} u ON u.id = s.userid";
+    if ($groupid > 0) {
+        $join .= " JOIN {groups_members} gm ON gm.userid = s.userid AND gm.groupid = :gid";
+        $params['gid'] = $groupid;
+    }
+    $sql = "SELECT u.id, u.firstname, u.lastname, u.email, s.timecreated
+              FROM {workshopbooking_signups} s
+              $join
+             WHERE s.workshopbookingid = :sid
+          ORDER BY s.timecreated ASC";
+    $signups = $DB->get_records_sql($sql, $params);
+if ($signups) {
+        $table = new html_table();
+        $table->head = [get_string('fullname'), get_string('email'), get_string('signedupon', 'mod_workshopbooking')];
+        if (has_capability('mod/workshopbooking:manage', $context)) { $table->head[] = get_string('actions'); }
+        foreach ($signups as $s) {
+            $row = [ fullname($s), s($s->email), userdate($s->timecreated) ];
+            if (has_capability('mod/workshopbooking:manage', $context)) {
+                $delurl = new moodle_url($PAGE->url, ['action' => 'removesignup', 'userid' => $s->id, 'sesskey' => sesskey()]);
+                $row[] = $output->single_button($delurl, get_string('removesignup', 'mod_workshopbooking'));
+            }
+            $table->data[] = $row;
+        }
+        echo html_writer::table($table);
+echo html_writer::end_div();
+echo html_writer::end_div();
+    } else {
+        echo html_writer::div(get_string('noparticipants', 'mod_workshopbooking'));
+echo html_writer::end_div();
+echo html_writer::end_div();
+    }
+}
+
+// Mark viewed for completion.
+$completion = new completion_info($course);
+$completion->set_module_viewed($cm);
+
+echo $output->footer();

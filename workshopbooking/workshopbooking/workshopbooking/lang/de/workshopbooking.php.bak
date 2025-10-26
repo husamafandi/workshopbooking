@@ -1,0 +1,144 @@
+<?php
+$string['modulename'] = 'Workshop‑Anmeldung';
+$string['modulenameplural'] = 'Workshop‑Anmeldungen';
+$string['pluginname'] = 'Workshop‑Anmeldung';
+$string['pluginadministration'] = 'Verwaltung: Workshop‑Anmeldung';
+$string['name'] = 'Name';
+$string['availability'] = 'Verfügbarkeit';
+$string['signupstart'] = 'Anmeldung öffnet';
+$string['signupend'] = 'Anmeldung schließt';
+$string['from'] = 'Von';
+$string['to'] = 'bis';
+$string['maxparticipants'] = 'Max. Anzahl der Anmeldungen';
+$string['maxparticipants_help'] = '0 bedeutet unbegrenzt.';
+$string['signup'] = 'Jetzt anmelden';
+$string['cancel'] = 'Anmeldung stornieren';
+$string['signedup'] = 'Sie sind angemeldet.';
+$string['canceled'] = 'Ihre Anmeldung wurde storniert.';
+$string['cannot_signup'] = 'Anmeldung nicht möglich.';
+$string['cannot_cancel'] = 'Stornierung nicht möglich.';
+$string['full'] = 'Ausgebucht';
+$string['notopen'] = 'Anmeldung ist derzeit nicht geöffnet.';
+$string['participants'] = 'Teilnehmer/innen';
+$string['signedupon'] = 'Angemeldet am';
+$string['noparticipants'] = 'Noch keine Anmeldungen.';
+$string['limit_reached'] = 'Buchungen: {$a}';
+$string['limit_unlimited'] = 'Buchungen: {$a} (unbegrenzt)';
+$string['privacy:metadata'] = 'Das Plugin speichert minimale Anmeldedaten.';
+$string['none'] = 'Keine Aktivitäten gefunden.';
+$string['exportcsv'] = 'CSV Teilnehmer/innenliste exportieren';
+$string['actions'] = 'Aktionen';
+
+// Capabilities
+$string['workshopbooking:viewparticipants'] = 'Teilnehmer/innenliste anzeigen';
+$string['workshopbooking:export'] = 'Teilnehmer/innenliste exportieren';
+
+// Help (only HTML link)
+$string['modulename_help'] = '<p><strong>Workshop-Anmeldung</strong> ermöglicht eine schnelle und klare Organisation von Terminen. Teilnehmer_innen sehen eine Liste aller verfügbaren Sessions mit Datum und Uhrzeit (Format: „14. Oktober 2025 von 08:00 bis 10:00“) und melden sich mit einem Klick an oder ab.</p>
+
+<p><strong>Teilnehmer_innen-Sicht:</strong> Nur offene Termine werden angeboten; volle oder geschlossene Slots zeigen einen Hinweis. Nach der Anmeldung erscheint der Status und eine Schaltfläche zum Abmelden. Die Darstellung berücksichtigt Gruppenfilter und zeigt pro Session die belegten Plätze.</p>
+
+<p><strong>Trainer_innen-Sicht:</strong> Oben stehen Verwaltungsfunktionen: Gruppenfilter, CSV-Export, Bestätigen/Zurücknehmen einzelner Buchungen sowie Buchung löschen. Die Liste der Anmeldungen kann nach Gruppe gefiltert werden; der CSV-Export übernimmt den aktuell gewählten Filter.</p>
+
+<p><strong>Serientermine erzeugen:</strong> Beim Anlegen der Aktivität definiert ihr <em>Startdatum der Serie</em> (recurstart), <em>Anzahl der Termine</em> (recurcount) und das <em>Intervall in Tagen</em> (recurintervaldays). Mit einem Button können die Sessions automatisch erzeugt oder aktualisiert werden.</p>
+
+<p><strong>Uhrzeiten und Dauer:</strong> Verwendet <em>Vormittags-Starthour</em> (vmstarthour) und <em>Nachmittags-Starthour</em> (nmstarthour). Die <em>Dauer pro Session</em> (Stunden) bestimmt die Endzeit; die Ausgabe erfolgt als „von … bis …“.</p>
+
+<p><strong>Kapazitäten:</strong> Tragt min/max Plätze (capacitymin/capacitymax) ein. Ist das Maximum erreicht, wird die Anmeldung automatisch gesperrt. Bestätigte Plätze werden separat gezählt, wenn eine Bestätigung erfolgt.</p>
+
+<p><strong>Anmeldezeitraum (optional):</strong> Mit <em>Öffnet</em> und <em>Schließt</em> begrenzt ihr die Buchungsphase; außerhalb dieses Fensters können Teilnehmer_innen nicht buchen.</p>
+
+<p><strong>Gruppen:</strong> Sessions können einer Kursgruppe zugeordnet werden. Im Trainerbereich filtert ihr nach Gruppe; der Export berücksichtigt die Auswahl. Der Button „Gruppen reparieren“ setzt verwaiste Gruppen-IDs auf „Alle Gruppen“.</p>
+
+<p><strong>Rechte:</strong> Teilnehmer_innen benötigen <code>mod/workshopbooking:signup</code>; Trainer_innen erhalten zusätzlich <code>mod/workshopbooking:manage</code>, um Aktionen, Export und Serientermine zu nutzen.</p>
+
+<p><strong>Kompatibilität:</strong> Getestet mit Moodle 4.1. Für ältere Versionen können Abweichungen bestehen.</p>
+
+<p><strong>Entwickler:</strong> Husam Afandi</p>';
+$string['pluginname_help'] = $string['modulename_help'];
+
+// Manage signups
+$string['removesignup'] = 'Anmeldung löschen';
+$string['signupremoved'] = 'Anmeldung wurde gelöscht.';
+$string['cannot_remove'] = 'Anmeldung konnte nicht gelöscht werden.';
+
+$string['allgroups_local'] = 'Alle Gruppen';
+
+$string['recurhdr'] = 'Serientermine & Limits';
+$string['recurenabled'] = 'Serientermine aktivieren (Sessions erzeugen)';
+$string['recurstart'] = 'Startdatum der Serie';
+$string['recurcount'] = 'Anzahl der Vorkommnisse';
+$string['recurintervaldays'] = 'Intervall (Tage)';
+$string['durationdays'] = 'Dauer pro Session (Stunden)';
+$string['vmstarthour'] = 'Beginn Vormittag (Stunde)';
+$string['nmstarthour'] = 'Beginn Nachmittag (Stunde)';
+$string['capacitymin'] = 'Mindestteilnehmer/innen pro Session';
+$string['capacitymax'] = 'Maximalteilnehmer/innen pro Session';
+$string['maxbookingsperuser'] = 'Max. bestätigte Workshops pro TN';
+$string['bookopenoffsetdays'] = 'Buchung öffnet (Tage vor Start)';
+$string['bookcloseoffsetdays'] = 'Buchung schließt (Tage vor Start)';
+$string['task_process_sessions'] = 'Sessions verarbeiten (Warteliste nachrücken)';
+$string['btn_generate_series'] = '14‑Tage‑Serie erzeugen/aktualisieren';
+$string['nosessions'] = 'Noch keine Sessions definiert.';
+$string['session'] = 'Session';
+$string['dates'] = 'Zeitraum';
+$string['slot'] = 'Slot';
+$string['capacity'] = 'Kapazität';
+$string['booking'] = 'Buchung';
+$string['signup'] = 'Anmelden';
+$string['signedup_confirmed'] = 'Du bist angemeldet (bestätigt).';
+$string['signedup_waitlist'] = 'Du stehst auf der Warteliste.';
+$string['status_booked'] = 'Angemeldet';
+$string['seriesgenerated'] = 'Serie erzeugt/aktualisiert.';
+$string['maxbookingsreached'] = 'Du hast die maximale Anzahl an Workshops erreicht.';
+$string['bookingnotopen'] = 'Die Buchung ist noch nicht geöffnet.';
+$string['bookingclosed'] = 'Die Buchung ist geschlossen.';
+
+$string['schemafixed'] = 'Datenbankschema geprüft/ergänzt.';
+
+$string['btn_participants'] = 'Teilnehmer/innen anzeigen';
+$string['btn_exportcsv'] = 'CSV exportieren';
+$string['participants_heading'] = 'Angemeldete Teilnehmer/innen';
+$string['col_session'] = 'Session';
+$string['col_slot'] = 'Slot';
+$string['col_date'] = 'Beginn';
+$string['col_date_end'] = 'Ende';
+$string['col_user'] = 'Teilnehmer/in';
+$string['col_email'] = 'E-Mail';
+$string['col_userid'] = 'Nutzer-ID';
+$string['col_username'] = 'Nutzername';
+$string['col_created'] = 'Erstellt am';
+$string['col_status'] = 'Status';
+$string['status_confirmed'] = 'Bestätigt';
+$string['status_waitlist'] = 'Warteliste';
+
+
+$string['filter_group'] = 'Kursgruppe';
+$string['all_groups'] = 'Alle Gruppen';
+$string['apply_filter'] = 'Filtern';
+$string['csv_for_filter'] = 'CSV exportieren (mit Filter)';
+
+
+$string['btn_groupfilter'] = 'Gruppenfilter';
+
+$string['pluginname_help'] = '<p><strong>Workshop-Anmeldung</strong> ermöglicht eine schnelle und klare Organisation von Terminen. Teilnehmer_innen sehen eine Liste aller verfügbaren Sessions mit Datum und Uhrzeit (Format: „14. Oktober 2025 von 08:00 bis 10:00“) und melden sich mit einem Klick an oder ab.</p>
+
+<p><strong>Teilnehmer_innen-Sicht:</strong> Nur offene Termine werden angeboten; volle oder geschlossene Slots zeigen einen Hinweis. Nach der Anmeldung erscheint der Status und eine Schaltfläche zum Abmelden. Die Darstellung berücksichtigt Gruppenfilter und zeigt pro Session die belegten Plätze.</p>
+
+<p><strong>Trainer_innen-Sicht:</strong> Oben stehen Verwaltungsfunktionen: Gruppenfilter, CSV-Export, Bestätigen/Zurücknehmen einzelner Buchungen sowie Buchung löschen. Die Liste der Anmeldungen kann nach Gruppe gefiltert werden; der CSV-Export übernimmt den aktuell gewählten Filter.</p>
+
+<p><strong>Serientermine erzeugen:</strong> Beim Anlegen der Aktivität definiert ihr <em>Startdatum der Serie</em> (recurstart), <em>Anzahl der Termine</em> (recurcount) und das <em>Intervall in Tagen</em> (recurintervaldays). Mit einem Button können die Sessions automatisch erzeugt oder aktualisiert werden.</p>
+
+<p><strong>Uhrzeiten und Dauer:</strong> Verwendet <em>Vormittags-Starthour</em> (vmstarthour) und <em>Nachmittags-Starthour</em> (nmstarthour). Die <em>Dauer pro Session</em> (Stunden) bestimmt die Endzeit; die Ausgabe erfolgt als „von … bis …“.</p>
+
+<p><strong>Kapazitäten:</strong> Tragt min/max Plätze (capacitymin/capacitymax) ein. Ist das Maximum erreicht, wird die Anmeldung automatisch gesperrt. Bestätigte Plätze werden separat gezählt, wenn eine Bestätigung erfolgt.</p>
+
+<p><strong>Anmeldezeitraum (optional):</strong> Mit <em>Öffnet</em> und <em>Schließt</em> begrenzt ihr die Buchungsphase; außerhalb dieses Fensters können Teilnehmer_innen nicht buchen.</p>
+
+<p><strong>Gruppen:</strong> Sessions können einer Kursgruppe zugeordnet werden. Im Trainerbereich filtert ihr nach Gruppe; der Export berücksichtigt die Auswahl. Der Button „Gruppen reparieren“ setzt verwaiste Gruppen-IDs auf „Alle Gruppen“.</p>
+
+<p><strong>Rechte:</strong> Teilnehmer_innen benötigen <code>mod/workshopbooking:signup</code>; Trainer_innen erhalten zusätzlich <code>mod/workshopbooking:manage</code>, um Aktionen, Export und Serientermine zu nutzen.</p>
+
+<p><strong>Kompatibilität:</strong> Getestet mit Moodle 4.1. Für ältere Versionen können Abweichungen bestehen.</p>
+
+<p><strong>Entwickler:</strong> Husam Afandi</p>';

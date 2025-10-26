@@ -1,0 +1,563 @@
+<?php
+/**
+ * This file is part of the workshopbooking_unpacked plugin for Moodle.
+ *
+ * Copyright (C) 2025 Husam Afandi
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * @package   workshopbooking_unpacked
+ * @author    Husam Afandi
+ * @license   https://www.gnu.org/licenses/gpl-3.0.html GNU GPL v3 or later
+ */
+
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+
+
+
+
+
+function xmldb_workshopbooking_upgrade($oldversion) {
+
+
+
+
+
+    global $DB;
+
+
+
+
+
+
+
+
+
+
+
+    $dbman = $DB->get_manager();
+
+
+
+
+
+
+
+
+
+
+
+    if ($oldversion < 2025101000) {
+
+
+
+
+
+        // Add new fields to workshopbooking.
+
+
+
+
+
+        $table = new xmldb_table('workshopbooking');
+
+
+
+
+
+        $fields = [
+
+
+
+
+
+            new xmldb_field('maxparticipants', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('capacitymin', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('capacitymax', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('maxbookingsperuser', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 5),
+
+
+
+
+
+            new xmldb_field('recurenabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('recurstart', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('recurcount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0),
+
+
+
+
+
+            new xmldb_field('recurintervaldays', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 14),
+
+
+
+
+
+            new xmldb_field('durationdays', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 14),
+
+
+
+
+
+            new xmldb_field('vmstarthour', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, 8),
+
+
+
+
+
+            new xmldb_field('nmstarthour', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, 13),
+
+
+
+
+
+            new xmldb_field('bookopenoffsetdays', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 7),
+
+
+
+
+
+            new xmldb_field('bookcloseoffsetdays', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 1),
+
+
+
+
+
+        ];
+
+
+
+
+
+        foreach ($fields as $field) {
+
+
+
+
+
+            if (!$dbman->field_exists($table, $field)) {
+
+
+
+
+
+                $dbman->add_field($table, $field);
+
+
+
+
+
+            }
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        // Create workshopbooking_session table.
+
+
+
+
+
+        $table = new xmldb_table('workshopbooking_session');
+
+
+
+
+
+        if (!$dbman->table_exists($table)) {
+
+
+
+
+
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null, true);
+
+
+
+
+
+            $table->add_field('workshopbookingid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('name', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+
+
+
+
+
+            $table->add_field('slot', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, null);
+
+
+
+
+
+            $table->add_field('timestart', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('timeend', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('bookingopen', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('bookingclose', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('capacitymin', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 10);
+
+
+
+
+
+            $table->add_field('capacitymax', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 20);
+
+
+
+
+
+            $table->add_field('groupid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('status', XMLDB_TYPE_INTEGER, '3', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+
+
+
+
+
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+
+
+
+
+            $table->add_key('fk_workshopbookingid', XMLDB_KEY_FOREIGN, ['workshopbookingid'], 'workshopbooking', ['id']);
+
+
+
+
+
+            $dbman->create_table($table);
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        // Create workshopbooking_booking table.
+
+
+
+
+
+        $table = new xmldb_table('workshopbooking_booking');
+
+
+
+
+
+        if (!$dbman->table_exists($table)) {
+
+
+
+
+
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null, true);
+
+
+
+
+
+            $table->add_field('sessionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('status', XMLDB_TYPE_INTEGER, '3', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+
+
+
+
+
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+
+
+
+
+            $table->add_key('fk_session', XMLDB_KEY_FOREIGN, ['sessionid'], 'workshopbooking_session', ['id']);
+
+
+
+
+
+            $table->add_index('uniq_user_session', XMLDB_INDEX_UNIQUE, ['sessionid','userid']);
+
+
+
+
+
+            $table->add_index('idx_user', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+
+
+
+
+
+            $dbman->create_table($table);
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        upgrade_mod_savepoint(true, 2025101000, 'workshopbooking');
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+    if ($oldversion < 2025101011) {
+
+
+
+
+
+        // Add multiworkshops and workshopnames.
+
+
+
+
+
+        $table = new xmldb_table('workshopbooking');
+
+
+
+
+
+        $field1 = new xmldb_field('multiworkshops', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, 0);
+
+
+
+
+
+        if (!$dbman->field_exists($table, $field1)) {
+
+
+
+
+
+            $dbman->add_field($table, $field1);
+
+
+
+
+
+        }
+
+
+
+
+
+        $field2 = new xmldb_field('workshopnames', XMLDB_TYPE_TEXT, null, null, null, null, null);
+
+
+
+
+
+        if (!$dbman->field_exists($table, $field2)) {
+
+
+
+
+
+            $dbman->add_field($table, $field2);
+
+
+
+
+
+        }
+
+
+
+
+
+        upgrade_mod_savepoint(true, 2025101011, 'workshopbooking');
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+    return true;
+
+
+
+
+
+}
+
+
+
+
+

@@ -1,0 +1,201 @@
+/* ==========================================================================
+   Workshopbooking – styles.css (Final)
+   ========================================================================== */
+
+/* ---------- Design Tokens ---------- */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view){
+  --sb-gap-grid: 14px;
+  --sb-gap-grid-xs: 12px;
+  --sb-card-padding: 12px;
+  --sb-actions-gap: 8px;
+  --sb-btn-margin: 4px;
+  --sb-head-gap: 4px;
+  --sb-head-divider: 0.5px solid #cbd5e1;
+  --sb-head-divider-margin: 6px;
+
+  --sb-text: var(--bs-body-color, #111827);
+  --sb-muted: var(--bs-secondary-color, #475569);
+  --sb-surface: var(--bs-body-bg, #ffffff);
+
+  --sb-frame: #e6ebf2;
+  --sb-frame-hover: #d6dce5;
+  --sb-shadow: 0 1px 2px rgba(0,0,0,.04);
+
+  --sb-primary-rgb: var(--bs-primary-rgb, 30, 64, 175);
+
+  --sb-badge-bg: #eef2f7;
+  --sb-badge-border: #e3e8ef;
+  --sb-badge-fg: #334155;
+  --sb-badge-nm-bg: #f3f8ee;
+  --sb-badge-nm-border: #e2eed7;
+  --sb-badge-nm-fg: #3f6212;
+
+  --sb-font-sans: var(--bs-body-font-family, var(--font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji"));
+  --sb-font-heading: var(--bs-heading-font-family, var(--heading-font-family, var(--sb-font-sans)));
+
+  --sb-accent-height: 3px;
+  --sb-accent-default: #e5e7eb;
+  --sb-accent-vm: #cbd5e1;
+  --sb-accent-nm: #cce7b5;
+}
+@media (prefers-color-scheme: dark){
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view){
+    --sb-frame: #343a46;
+    --sb-frame-hover: #485261;
+    --sb-shadow: 0 1px 2px rgba(0,0,0,.25);
+    --sb-accent-default: #4b5563;
+  }
+}
+
+/* ---------- Grid & Card ---------- */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr));
+  gap:var(--sb-gap-grid); container-type:inline-size;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card{
+  position:relative; display:flex; flex-direction:column; min-width:0; box-sizing:border-box;
+  background:var(--sb-surface); border:1px solid var(--sb-frame); border-inline-start-width:2px;
+  border-radius:16px; padding:var(--sb-card-padding); box-shadow:var(--sb-shadow);
+  color:var(--sb-text); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  transition:box-shadow .25s ease, transform .2s ease, border-color .2s ease; overflow:clip;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:hover{
+  border-color:var(--sb-frame-hover); box-shadow:0 8px 20px rgba(0,0,0,.10); transform:translateY(-2px);
+}
+
+/* Top accent + Slot-Akzent */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card::before{
+  content:""; position:absolute; inset-block-start:0; inset-inline:0; block-size:var(--sb-accent-height);
+  background:var(--sb-accent-default);
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:has(.sb-badge--vm){border-inline-start-color:var(--sb-accent-vm);}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:has(.sb-badge--vm)::before{background:var(--sb-accent-vm);}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:has(.sb-badge--nm){border-inline-start-color:var(--sb-accent-nm);}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:has(.sb-badge--nm)::before{background:var(--sb-accent-nm);}
+
+/* Header */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card__head{
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--sb-head-gap);
+  margin-block-end:var(--sb-head-gap); position:relative;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card__head::after{
+  content:""; display:block; inline-size:100%; border-block-start:var(--sb-head-divider); margin-block:var(--sb-head-divider-margin);
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-title{
+  font-family:var(--sb-font-heading); font-weight:600; letter-spacing:.15px;
+  font-size:clamp(15px,1.6vw,17px); line-height:1.35; margin:0;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Badges (VM/NM oben rechts) */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-badge{
+  position:absolute; inset-block-start:10px; inset-inline-end:12px; font-size:11.5px;
+  background:var(--sb-badge-bg); border:1px solid var(--sb-badge-border); color:var(--sb-badge-fg);
+  border-radius:999px; padding-block:2px; padding-inline:7px;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-badge.sb-badge--nm{
+  background:var(--sb-badge-nm-bg); border-color:var(--sb-badge-nm-border); color:var(--sb-badge-nm-fg);
+}
+
+/* Meta */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-sub{
+  color:var(--sb-muted); font-variant-numeric:tabular-nums;
+  letter-spacing:.1px; line-height:1.45; font-size:13px; margin-block:1px 4px;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-cap{
+  color:#374151; font-variant-numeric:tabular-nums;
+  letter-spacing:.1px; line-height:1.45; font-size:12px; margin-block-end:6px;
+}
+
+/* Actions */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-actions{
+  margin-block-start:auto; display:flex; flex-wrap:wrap; gap:var(--sb-actions-gap);
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-actions .btn{
+  margin:var(--sb-btn-margin);
+}
+
+/* Responsive Kleinzeug */
+@media (max-width:420px){
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-grid{gap:var(--sb-gap-grid-xs);}
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-badge{position:static; margin-block-start:4px;}
+}
+
+/* ---------- Admin-Leiste: Desktop einzeilig ---------- */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view)
+.card > .card-body.p-2 > .d-flex.align-items-center.flex-wrap{
+  display:flex; align-items:center; gap:8px; flex-wrap:nowrap;
+  overflow-x:auto; white-space:nowrap; padding-bottom:2px;
+}
+@media (max-width: 992px){
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view)
+  .card > .card-body.p-2 > .d-flex.align-items-center.flex-wrap{
+    flex-wrap:wrap; overflow-x:visible; white-space:normal;
+  }
+}
+
+/* ---------- Filter-Layout ---------- */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-filter{
+  display:grid; grid-template-columns:repeat(4, minmax(160px,1fr)) max-content max-content;
+  gap:8px; align-items:end;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-filter > a:not(.btn){
+  justify-self:start; align-self:center; white-space:nowrap;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-filter > .btn{ justify-self:end; }
+@media (max-width:768px){
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-filter{ grid-template-columns:1fr; }
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-filter > .btn{ inline-size:100%; }
+}
+
+/* ---------- Status-Chips ---------- */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-statuses{
+  display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 6px;
+}
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-chip{
+  display:inline-flex; align-items:center; padding:4px 10px; border-radius:9999px;
+  border:1px solid #cbd5e1; background:#f1f5f9; color:#334155;
+  font-weight:600; font-size:12px; line-height:1; white-space:nowrap;
+}
+
+/* >>> verbindliche Farbpalette (wie gewünscht) */
+.sb-chip--ok      { background:#ecfdf5 !important; border:1px solid #a7f3d0 !important; color:#065f46 !important; } /* Bestätigt */
+.sb-chip--pend    { background:#fffbeb !important; border:1px solid #fde68a !important; color:#92400e !important; } /* Ausstehend */
+.sb-chip--decline,
+.sb-chip--declined{ background:#FDECEF !important; border:1px solid #F9C7CD !important; color:#B42318 !important; } /* Absage */
+.sb-chip--opens   { background:#e0f2fe !important; border:1px solid #bae6fd !important; color:#075985 !important; } /* Öffnet am … */
+.sb-chip--closed  { background:#FFF3CD !important; border:1px solid #FFECB5 !important; color:#7A5E00 !important; } /* Buchung geschlossen */
+.sb-chip--full    { background:#fff7ed !important; border:1px solid #fed7aa !important; color:#9a3412 !important; } /* Ausgebucht */
+.sb-chip--past    { background:#f5f5f5 !important; border:1px solid #e5e7eb !important; color:#374151 !important; } /* Abgelaufen */
+
+/* Legacy-Status auf Karte verbergen, wenn Chips vorhanden sind */
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view)
+.sb-card:has(.sb-statuses) .legacy-status{ display:none !important; }
+:is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view)
+.sb-card:has(.sb-statuses) div.text-muted.small.mb-1{ display:none !important; }
+
+/* ---------- Legende im Rahmen ---------- */
+.sb-legend .items{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:.35rem .75rem; align-items:center; }
+.sb-legend .item{ display:flex; align-items:center; gap:.5rem; min-width:0; }
+.sb-legend .sb-chip{ margin:0; }
+.sb-legend .desc{ color:#6c757d; }
+
+/* ---------- Mobile Light-Frame Tweak ---------- */
+@media (max-width: 768px){
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card{
+    border-color:#f1f5f9 !important;
+    border-inline-start-color:#f1f5f9 !important;
+    box-shadow:0 1px 2px rgba(0,0,0,.02) !important;
+    transform:none !important;
+  }
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card:hover{
+    border-color:#eef2f7 !important; box-shadow:0 2px 6px rgba(0,0,0,.06) !important;
+  }
+}
+
+/* ---------- Print ---------- */
+@media print{
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-grid{ gap:10px; }
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-card{ box-shadow:none; background:#fff; border-color:#ccc; break-inside:avoid-page; }
+  :is(body.path-mod-workshopbooking, #page-mod-workshopbooking-view) .sb-actions{ display:none !important; }
+}

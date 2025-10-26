@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/workshopbooking/db" VERSION="2025101009" COMMENT="XMLDB file for mod_workshopbooking" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
+  <TABLES>
+    <TABLE NAME="workshopbooking" COMMENT="Simple Booking instances">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="course" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="intro" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="introformat" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <!-- New instance-level settings -->
+        <FIELD NAME="maxparticipants" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="0 = unlimited"/>
+        <FIELD NAME="capacitymin" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="capacitymax" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="maxbookingsperuser" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="5"/>
+        <FIELD NAME="recurenabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="recurstart" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="recurcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="recurintervaldays" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="14"/>
+        <FIELD NAME="durationdays" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="14"/>
+        <FIELD NAME="vmstarthour" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="8"/>
+        <FIELD NAME="nmstarthour" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="13"/>
+        <FIELD NAME="bookopenoffsetdays" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="7"/>
+        <FIELD NAME="bookcloseoffsetdays" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1"/>
+              <FIELD NAME="multiworkshops" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="workshopnames" TYPE="text" NOTNULL="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="workshopbooking_session" COMMENT="Recurring sessions (VM/NM) for a workshopbooking instance">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="workshopbookingid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="slot" TYPE="char" LENGTH="10" NOTNULL="true" COMMENT="VM or NM"/>
+        <FIELD NAME="timestart" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timeend" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="bookingopen" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="bookingclose" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="capacitymin" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="10"/>
+        <FIELD NAME="capacitymax" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="20"/>
+        <FIELD NAME="groupid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="status" TYPE="int" LENGTH="3" NOTNULL="true" DEFAULT="0" COMMENT="0=upcoming,1=running,2=finished,3=canceled"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+              <FIELD NAME="multiworkshops" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="workshopnames" TYPE="text" NOTNULL="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="fk_workshopbookingid" TYPE="foreign" FIELDS="workshopbookingid" REFTABLE="workshopbooking" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_workshopbookingid" UNIQUE="false" FIELDS="workshopbookingid"/>
+        <INDEX NAME="idx_timestart" UNIQUE="false" FIELDS="timestart"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="workshopbooking_booking" COMMENT="User bookings per session with waitlist">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="sessionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="status" TYPE="int" LENGTH="3" NOTNULL="true" DEFAULT="0" COMMENT="0=pending,1=confirmed,2=waitlist,3=cancelled"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+              <FIELD NAME="multiworkshops" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="workshopnames" TYPE="text" NOTNULL="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="fk_session" TYPE="foreign" FIELDS="sessionid" REFTABLE="workshopbooking_session" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="uniq_user_session" UNIQUE="true" FIELDS="sessionid,userid"/>
+        <INDEX NAME="idx_user" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

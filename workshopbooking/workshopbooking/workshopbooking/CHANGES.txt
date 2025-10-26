@@ -1,0 +1,3 @@
+1.0.1
+- FIX: db/access.php used string 'allow' instead of CAP_ALLOW (integer).
+- FIX: index.php PHP array append typo.

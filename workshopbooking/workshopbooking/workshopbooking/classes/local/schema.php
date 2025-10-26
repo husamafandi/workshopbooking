@@ -1,0 +1,533 @@
+<?php
+/**
+ * This file is part of the workshopbooking_unpacked plugin for Moodle.
+ *
+ * Copyright (C) 2025 Husam Afandi
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * @package   workshopbooking_unpacked
+ * @author    Husam Afandi
+ * @license   https://www.gnu.org/licenses/gpl-3.0.html GNU GPL v3 or later
+ */
+
+
+
+
+
+
+namespace mod_workshopbooking\local;
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+
+
+
+
+
+class schema {
+
+
+
+
+
+    public static function ensure(): void {
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+        // Create tables with raw SQL if they do not exist. No xmldb includes required.
+
+
+
+
+
+        $prefix = $DB->get_prefix();
+
+
+
+
+
+        $tables = $DB->get_tables(false);
+
+
+
+
+
+
+
+
+
+
+
+        $has = function(string $name) use ($tables, $prefix): bool {
+
+
+
+
+
+            return isset($tables[$name]) || isset($tables[$prefix.$name]);
+
+
+
+
+
+        };
+
+
+
+
+
+
+
+
+
+
+
+        if (!$has('workshopbooking_session')) {
+
+
+
+
+
+            $sql = "
+
+
+
+
+
+CREATE TABLE {$prefix}workshopbooking_session (
+
+
+
+
+
+  id BIGINT(10) NOT NULL AUTO_INCREMENT,
+
+
+
+
+
+  workshopbookingid BIGINT(10) NOT NULL,
+
+
+
+
+
+  name VARCHAR(255) NOT NULL,
+
+
+
+
+
+  slot VARCHAR(10) NOT NULL,
+
+
+
+
+
+  timestart BIGINT(10) NOT NULL,
+
+
+
+
+
+  timeend BIGINT(10) NOT NULL,
+
+
+
+
+
+  bookingopen BIGINT(10) NOT NULL DEFAULT 0,
+
+
+
+
+
+  bookingclose BIGINT(10) NOT NULL DEFAULT 0,
+
+
+
+
+
+  capacitymin INT(10) NOT NULL DEFAULT 10,
+
+
+
+
+
+  capacitymax INT(10) NOT NULL DEFAULT 20,
+
+
+
+
+
+  groupid BIGINT(10) NOT NULL DEFAULT 0,
+
+
+
+
+
+  status INT(3) NOT NULL DEFAULT 0,
+
+
+
+
+
+  timecreated BIGINT(10) NOT NULL DEFAULT 0,
+
+
+
+
+
+  PRIMARY KEY (id),
+
+
+
+
+
+  KEY idx_workshopbookingid (workshopbookingid),
+
+
+
+
+
+  KEY idx_timestart (timestart)
+
+
+
+
+
+) ENGINE=InnoDB";
+
+
+
+
+
+            $DB->execute($sql);
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        // Refresh table list
+
+
+
+
+
+
+
+
+
+
+
+        // Ensure extra columns on 'workshopbooking' (for multi workshops).
+
+
+
+
+
+        $cols = $DB->get_columns('workshopbooking');
+
+
+
+
+
+        if (!array_key_exists('multiworkshops', $cols)) {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking ADD COLUMN multiworkshops TINYINT(1) NOT NULL DEFAULT 0");
+
+
+
+
+
+        }
+
+
+
+
+
+        $cols = $DB->get_columns('workshopbooking');
+
+
+
+
+
+        if (!array_key_exists('workshopnames', $cols)) {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking ADD COLUMN workshopnames TEXT NULL");
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        $tables = $DB->get_tables(false);
+
+
+
+
+
+        $has = function(string $name) use ($tables, $prefix): bool {
+
+
+
+
+
+            return isset($tables[$name]) || isset($tables[$prefix.$name]);
+
+
+
+
+
+        };
+
+
+
+
+
+
+
+
+
+
+
+        if (!$has('workshopbooking_booking')) {
+
+
+
+
+
+            $sql = "
+
+
+
+
+
+CREATE TABLE {$prefix}workshopbooking_booking (
+
+
+
+
+
+  id BIGINT(10) NOT NULL AUTO_INCREMENT,
+
+
+
+
+
+  sessionid BIGINT(10) NOT NULL,
+
+
+
+
+
+  userid BIGINT(10) NOT NULL,
+
+
+
+
+
+  status INT(3) NOT NULL DEFAULT 0,
+
+
+
+
+
+  timecreated BIGINT(10) NOT NULL DEFAULT 0,
+
+
+
+
+
+  PRIMARY KEY (id),
+
+
+
+
+
+  UNIQUE KEY uniq_user_session (sessionid, userid),
+
+
+
+
+
+  KEY idx_user (userid)
+
+
+
+
+
+) ENGINE=InnoDB";
+
+
+
+
+
+            $DB->execute($sql);
+
+
+
+
+
+        }
+
+
+
+
+
+        // --- Ensure AUTO_INCREMENT & PRIMARY KEY on id columns (repair legacy tables) ---
+
+
+
+
+
+        try {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking_session MODIFY id BIGINT(10) NOT NULL AUTO_INCREMENT");
+
+
+
+
+
+        } catch (\Throwable $t) { /* ignore */ }
+
+
+
+
+
+        try {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking_session ADD PRIMARY KEY (id)");
+
+
+
+
+
+        } catch (\Throwable $t) { /* ignore */ }
+
+
+
+
+
+        try {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking_booking MODIFY id BIGINT(10) NOT NULL AUTO_INCREMENT");
+
+
+
+
+
+        } catch (\Throwable $t) { /* ignore */ }
+
+
+
+
+
+        try {
+
+
+
+
+
+            $DB->execute("ALTER TABLE {$prefix}workshopbooking_booking ADD PRIMARY KEY (id)");
+
+
+
+
+
+        } catch (\Throwable $t) { /* ignore */ }
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+}
+
+
+
+
+
