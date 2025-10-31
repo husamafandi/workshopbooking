@@ -1,0 +1,973 @@
+<?php
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+require_once($CFG->dirroot.'/course/moodleform_mod.php');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class mod_workshopbooking_mod_form extends moodleform_mod {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public function definition() {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform = $this->_form;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // Standard activity name.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'name', get_string('name'), ['size' => '64']);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->setType('name', PARAM_TEXT);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addRule('name', null, 'required', null, 'client');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // Description/editor.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $this->standard_intro_elements();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+        // WSB v20 marker (can be removed later)
+        $mform->addElement('html', '<div class="alert alert-info" role="alert">WSB v20 – Formular geladen</div>');
+$mform->addElement('header', 'availabilityhdr', get_string('availability', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('date_time_selector', 'signupstart', get_string('signupstart', 'mod_workshopbooking'), ['optional' => true]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('date_time_selector', 'signupend', get_string('signupend', 'mod_workshopbooking'), ['optional' => true]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --- SimpleBooking: recurrence & limits ---
+
+
+
+
+
+
+
+        $mform->addElement('header', 'recurhdr', get_string('recurhdr', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('advcheckbox', 'recurenabled', get_string('recurenabled', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setDefault('recurenabled', 1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('date_time_selector', 'recurstart', get_string('recurstart', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setDefault('recurstart', time() + 7*24*3600);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'recurcount', get_string('recurcount', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('recurcount', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('recurcount', 12);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'recurintervaldays', get_string('recurintervaldays', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('recurintervaldays', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('recurintervaldays', 14);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'durationdays', get_string('durationdays', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('durationdays', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('durationdays', 14);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'vmstarthour', get_string('vmstarthour', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('vmstarthour', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('vmstarthour', 8);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'nmstarthour', get_string('nmstarthour', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // Multiple workshops
+
+
+
+
+
+
+
+        $mform->addElement('advcheckbox', 'multiworkshops', get_string('multiworkshops', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setDefault('multiworkshops', 0);
+
+
+
+
+
+
+
+        $mform->addHelpButton('multiworkshops', 'multiworkshops', 'mod_workshopbooking');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('textarea', 'workshopnames', get_string('workshopnames', 'mod_workshopbooking'), 'rows="6" cols="60"');
+
+
+
+
+
+
+
+        $mform->setType('workshopnames', PARAM_RAW);
+
+
+
+
+
+
+
+        $mform->addHelpButton('workshopnames', 'workshopnames', 'mod_workshopbooking');
+
+
+
+
+
+
+
+        $mform->hideIf('workshopnames', 'multiworkshops', 'notchecked');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->setType('nmstarthour', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('nmstarthour', 13);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'capacitymin', get_string('capacitymin', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('capacitymin', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('capacitymin', 10);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'capacitymax', get_string('capacitymax', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('capacitymax', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('capacitymax', 20);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'maxbookingsperuser', get_string('maxbookingsperuser', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('maxbookingsperuser', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('maxbookingsperuser', 5);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'bookopenoffsetdays', get_string('bookopenoffsetdays', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('bookopenoffsetdays', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('bookopenoffsetdays', 7);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $mform->addElement('text', 'bookcloseoffsetdays', get_string('bookcloseoffsetdays', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+        $mform->setType('bookcloseoffsetdays', PARAM_INT);
+
+
+
+
+
+
+
+        $mform->setDefault('bookcloseoffsetdays', 1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $this->standard_coursemodule_elements();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+
+
+        // Apply global defaults from admin settings, if present.
+
+
+
+        $config = get_config('mod_workshopbooking');
+
+
+
+        if ($config) {
+
+
+
+            if (isset($config->defaultbookopenoffsetdays)) { $mform->setDefault('bookopenoffsetdays', (int)$config->defaultbookopenoffsetdays); }
+
+
+
+            if (isset($config->defaultbookcloseoffsetdays)) { $mform->setDefault('bookcloseoffsetdays', (int)$config->defaultbookcloseoffsetdays); }
+
+
+
+            if (isset($config->defaultrecurenabled)) { $mform->setDefault('recurenabled', (int)$config->defaultrecurenabled); }
+
+
+
+            if (isset($config->defaultrecurstart)) { $mform->setDefault('recurstart', (int)$config->defaultrecurstart); } // optional
+
+
+
+            if (isset($config->defaultrecurcount)) { $mform->setDefault('recurcount', (int)$config->defaultrecurcount); }
+
+
+
+            if (isset($config->defaultrecurintervaldays)) { $mform->setDefault('recurintervaldays', (int)$config->defaultrecurintervaldays); }
+
+
+
+            if (isset($config->defaultdurationdays)) { $mform->setDefault('durationdays', (int)$config->defaultdurationdays); }
+
+
+
+            if (isset($config->defaultvmstarthour)) { $mform->setDefault('vmstarthour', (int)$config->defaultvmstarthour); }
+
+
+
+            if (isset($config->defaultnmstarthour)) { $mform->setDefault('nmstarthour', (int)$config->defaultnmstarthour); }
+
+
+
+            if (isset($config->defaultcapacitymin)) { $mform->setDefault('capacitymin', (int)$config->defaultcapacitymin); }
+
+
+
+            if (isset($config->defaultcapacitymax)) { $mform->setDefault('capacitymax', (int)$config->defaultcapacitymax); }
+
+
+
+            if (isset($config->defaultmaxbookingsperuser)) { $mform->setDefault('maxbookingsperuser', (int)$config->defaultmaxbookingsperuser); }
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+        
+        // --- Reminders (wsb_*) ---
+        if (!$mform->elementExists('wsb_hdr_reminders')) {
+            $mform->addElement('header', 'wsb_hdr_reminders', get_string('reminders', 'mod_workshopbooking'));
+        }
+        if (!$mform->elementExists('wsb_reminderenabled')) {
+            $mform->addElement('selectyesno', 'wsb_reminderenabled', get_string('reminderenabled', 'mod_workshopbooking'));
+            $mform->setDefault('wsb_reminderenabled', 0);
+        }
+        if (!$mform->elementExists('wsb_reminderamount')) {
+            $mform->addElement('text', 'wsb_reminderamount', get_string('reminderamount', 'mod_workshopbooking'));
+            $mform->setType('wsb_reminderamount', PARAM_INT);
+            $mform->setDefault('wsb_reminderamount', 1);
+        }
+        if (!$mform->elementExists('wsb_reminderunit')) {
+            $mform->addElement('select', 'wsb_reminderunit', get_string('reminderunit', 'mod_workshopbooking'), [
+                'minute'=>get_string('minutes'),
+                'hour'=>get_string('hours'),
+                'day'=>get_string('days'),
+                'week'=>get_string('weeks'),
+                'month'=>get_string('months'),
+            ]);
+            $mform->setDefault('wsb_reminderunit', 'day');
+        }
+        if (!$mform->elementExists('wsb_remindersubject')) {
+            $mform->addElement('text', 'wsb_remindersubject', get_string('remindersubject', 'mod_workshopbooking'), ['size'=>'64']);
+            $mform->setType('wsb_remindersubject', PARAM_TEXT);
+        }
+        if (!$mform->elementExists('wsb_remindertemplate')) {
+            $editoropts = array('maxfiles'=>0, 'trusttext'=>true, 'context'=>$this->context);
+            $mform->addElement('editor', 'wsb_remindertemplate', get_string('remindertemplate', 'mod_workshopbooking'), null, $editoropts);
+            $mform->setType('wsb_remindertemplate', PARAM_RAW);
+        }
+        // show only if enabled
+        $mform->hideIf('wsb_reminderamount', 'wsb_reminderenabled', 'eq', 0);
+        $mform->hideIf('wsb_reminderunit', 'wsb_reminderenabled', 'eq', 0);
+        $mform->hideIf('wsb_remindersubject', 'wsb_reminderenabled', 'eq', 0);
+        $mform->hideIf('wsb_remindertemplate', 'wsb_reminderenabled', 'eq', 0);
+$this->add_action_buttons();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

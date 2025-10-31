@@ -1,0 +1,74 @@
+<div class="wbm container {{#compact}}wbm--compact{{/compact}}{{^compact}}wbm--full{{/compact}}">
+  {{#compact}}
+  <div class="wbm-header">
+    <div class="wbm-left">
+      {{#prevurl}}<a href="{{prevurl}}" class="wbm-ico" title="Zurück" aria-label="Zurück"><img src="{{iconprev}}" class="wbm-navimg" alt=""></a>{{/prevurl}}
+    </div>
+    <div class="wbm-center"><div class="wbm-month">{{monthlabel}}</div></div>
+    <div class="wbm-right">
+      {{#pdfurl}}<a href="{{pdfurl}}" class="wbm-iconbtn" title="{{downloadpdf}}" aria-label="{{downloadpdf}}"><i class="icon fa fa-file-pdf-o fa-fw" aria-hidden="true"></i></a>{{/pdfurl}}
+      {{#nexturl}}<a href="{{nexturl}}" class="wbm-ico" title="Weiter" aria-label="Weiter"><img src="{{iconnext}}" class="wbm-navimg" alt=""></a>{{/nexturl}}
+    </div>
+  </div>
+  {{/compact}}
+
+  {{^compact}}
+  <div class="wbm-header">
+    <div class="wbm-left">{{#prevurl}}<a href="{{prevurl}}" class="btn btn-secondary wbm-nav">Zurück</a>{{/prevurl}}</div>
+    <div class="wbm-center"><div class="wbm-month">{{monthlabel}}</div></div>
+    <div class="wbm-right">
+      {{#pdfurl}}<a href="{{pdfurl}}" class="wbm-iconbtn" title="{{downloadpdf}}" aria-label="{{downloadpdf}}"><i class="icon fa fa-file-pdf-o fa-fw" aria-hidden="true"></i></a>{{/pdfurl}}
+      {{#nexturl}}<a href="{{nexturl}}" class="btn btn-secondary wbm-nav">Weiter</a>{{/nexturl}}
+    </div>
+  </div>
+  {{/compact}}
+
+  {{#hasitems}}
+    {{#compact}}
+    <ul class="wbm-compact">
+      {{#flat}}
+      <li class="wbm-line">
+        <div class="wbm-icon"><i class="icon fa fa-users" aria-hidden="true"></i></div>
+        <div class="wbm-body">
+          <div class="wbm-name"><a href="{{url}}" class="wbm-title">{{name}}</a></div>
+          <div class="wbm-sub">{{slot}}{{#slot}} &ndash; {{/slot}}{{date}}</div>
+        </div>
+      </li>
+      {{/flat}}
+    </ul>
+    {{/compact}}
+
+    {{^compact}}
+    <div class="wbm-grid cards">
+      {{#days}}
+        <section class="wbm-day">
+          <h3 class="wbm-daytitle">{{daylabel}}</h3>
+          <ul class="wbm-list">
+            {{#entries}}
+            <li class="wbm-entry stacked">
+              <div class="wbm-field"><span class="wbm-label">{{labels.name}}:</span><div class="wbm-value"><a href="{{url}}" class="wbm-title">{{name}}</a> {{#slot}}<span class="wbm-chip">({{slot}})</span>{{/slot}}</div></div>
+              <div class="wbm-field"><span class="wbm-label">{{labels.date}}:</span><div class="wbm-value">{{date}}</div></div>
+              <div class="wbm-field"><span class="wbm-label">{{labels.time}}:</span><div class="wbm-value">{{time}}</div></div>
+              <div class="wbm-field"><span class="wbm-label">{{labels.room}}:</span><div class="wbm-value">{{room}}</div></div>
+            </li>
+            {{/entries}}
+          </ul>
+        </section>
+      {{/days}}
+    </div>
+    {{/compact}}
+  {{/hasitems}}
+
+  {{^hasitems}}
+    <div class="wbm-empty">
+      <img src="{{emptyicon}}" alt="" class="wbm-empty-icon" />
+      <div class="wbm-empty-title">{{emptymessage}}</div>
+    </div>
+  {{/hasitems}}
+
+  {{#showfooter}}
+    <div class="wbm-footer">
+      <a href="{{fullurl}}" class="btn btn-primary">{{viewfull}}</a>
+    </div>
+  {{/showfooter}}
+</div>

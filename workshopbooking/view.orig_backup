@@ -1,0 +1,1046 @@
+<?php
+// SPDX-License-Identifier: GPL-3.0
+// Workshopbooking – finale View ohne Warteliste.
+// Stati: 0=pending, 1=confirmed, 3=declined(admin), 4=declined_by_user.
+
+
+// Helper: detect per-user booking limit robustly (supports various field names).
+if (!function_exists('wsb_user_limit_value')) {
+    function wsb_user_limit_value($instance): int {
+        $candidates = [
+            'maxbookingsperuser','maxconfirmed','maxconfirmedbookings','maxconfirmbookings',
+            'maxbookingsconfirmed','maxuserbookings','max_user_bookings','maxperuser','maxperuserconfirmed',
+            'maxconfirmedperuser'
+        ];
+        foreach ($candidates as $k) {
+            if (isset($instance->$k) && (int)$instance->$k > 0) { return (int)$instance->$k; }
+        }
+        // Heuristic fallback over all properties.
+        foreach ((array)$instance as $k => $v) {
+            if (is_numeric($v) && (int)$v > 0 && preg_match('/max.*(book|anmeld|confirm).*user/i', (string)$k)) {
+                return (int)$v;
+            }
+        }
+        return 0;
+    }
+}
+require(__DIR__.'/../../config.php');
+require_once($CFG->libdir.'/completionlib.php');
+require_once($CFG->libdir.'/csvlib.class.php');
+
+$id       = required_param('id', PARAM_INT);
+$action   = optional_param('action', '', PARAM_ALPHA);
+$which    = optional_param('which', '', PARAM_ALPHA);      // participants: confirmed|pending|declined
+$groupid  = optional_param('sbgroupid', 0, PARAM_INT);
+
+$q        = optional_param('q', '', PARAM_RAW_TRIMMED);
+$slotf    = optional_param('slot', '', PARAM_ALPHA);
+$period   = optional_param('period', 'upcoming', PARAM_ALPHA);
+$statusf  = optional_param('status', 'all', PARAM_ALPHA);
+// Teilnehmer-Limit global für diese Instanz ermitteln (bestätigt + ausstehend).
+$userlimit_reached = false;
+$userconfirmed_glob = 0;
+$usertotalopen_glob = 0;
+if (!$istrainer_any && !empty($instance->maxbookingsperuser)) {
+    $userconfirmed_glob = (int)$DB->count_records_sql(
+        "SELECT COUNT(1)
+           FROM {workshopbooking_booking} b
+           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+          WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+        ['uid'=>$USER->id, 'iid'=>$instance->id]
+    );
+    $usertotalopen_glob = (int)$DB->count_records_sql(
+        "SELECT COUNT(1)
+           FROM {workshopbooking_booking} b
+           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+          WHERE b.userid = :uid AND b.status IN (0,1) AND s.workshopbookingid = :iid",
+        ['uid'=>$USER->id, 'iid'=>$instance->id]
+    );
+    $userlimit_reached = ($usertotalopen_glob >= (int)$instance->maxbookingsperuser) || ($userconfirmed_glob >= (int)$instance->maxbookingsperuser);
+}
+
+
+// Admin-Zeilenaktion auf der Teilnehmerliste
+$admact   = optional_param('admact', '', PARAM_ALPHA);     // confirm|decline|enable
+$bid      = optional_param('bid', 0, PARAM_INT);
+
+$cm       = get_coursemodule_from_id('workshopbooking', $id, 0, false, MUST_EXIST);
+$course   = $DB->get_record('course', ['id' => $cm->course], '*', MUST_EXIST);
+$instance = $DB->get_record('workshopbooking', ['id' => $cm->instance], '*', MUST_EXIST);
+
+require_login($course, true, $cm);
+$context       = context_module::instance($cm->id);
+$coursecontext = context_course::instance($cm->course);
+
+// CSS
+$PAGE->requires->css(new moodle_url('/mod/workshopbooking/styles.css'));
+
+/* ===== Helpers ===== */
+
+function wsb_str(string $key, string $fallback): string {
+    $sm = get_string_manager();
+    if ($sm->string_exists($key, 'mod_workshopbooking')) {
+        return get_string($key, 'mod_workshopbooking');
+    }
+    return $fallback;
+}
+
+if (!function_exists('sb_status_chip')) {
+    function sb_status_chip(string $key, string $label): string {
+        $cls = [
+            'ok'      => 'sb-chip sb-chip--ok',
+            'pend'    => 'sb-chip sb-chip--opens',
+            'full'    => 'sb-chip sb-chip--full',
+            'closed'  => 'sb-chip sb-chip--closed',
+            'opens'   => 'sb-chip sb-chip--opens',
+            'past'    => 'sb-chip sb-chip--past',
+            'decline' => 'sb-chip sb-chip--decline',
+        ];
+        return html_writer::span($label, $cls[$key] ?? 'sb-chip');
+    }
+}
+
+
+// Parse the instance-level "workshopnames" textarea (multiple workshops mode)
+// Expected per line: "Name, <date/time...>, <URL>, <Description>"
+// Only the 3rd (URL) and 4th (Description) fields are relevant here.
+if (!function_exists('wsb_parse_workshopnames')) {
+    function wsb_parse_workshopnames(string $raw): array {
+        $map = [];
+        foreach (preg_split('/\r?\n/', trim((string)$raw)) as $line) {
+            $line = trim($line);
+            if ($line === '') { continue; }
+            $parts = array_map('trim', explode(',', $line, 4));
+            $key = $parts[0] ?? '';
+            if ($key === '') { continue; }
+            $url  = $parts[2] ?? '';
+            $desc = $parts[3] ?? '';
+            // Support line breaks written as '|' or as literal \n sequences
+            $desc = str_replace(["\\r\\n","\\n"], "\n", $desc);
+            $desc = preg_replace('/\s*\|\s*/', "\n", $desc);
+            $map[$key] = ['url' => $url, 'desc' => $desc];
+        }
+        return $map;
+    }
+}
+if (!function_exists('sb_slot_badge')) {
+    function sb_slot_badge(string $slottext): string {
+        $slot = core_text::strtoupper(trim($slottext ?? ''));
+        $cls = 'sb-badge';
+        if ($slot === 'VM' || $slot === 'NM') { $cls .= ' sb-badge--'.core_text::strtolower($slot); }
+        return $slot ? html_writer::span($slot, $cls) : '';
+    }
+}
+
+/* ===== Gruppen-Helfer ===== */
+if (!function_exists('workshopbooking_ensure_group_for_session')) {
+    // $createmissing steuert, ob fehlende Gruppen erstellt werden; persistiert groupid in Session.
+    function workshopbooking_ensure_group_for_session($session, $cm, $instance, $createmissing = true) {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/group/lib.php');
+
+        $courseid = (int)($cm->course ?? $cm->courseid ?? 0);
+        if (!$courseid) { return 0; }
+
+        $slot = isset($session->slot) ? trim($session->slot) : '';
+        $workshopname = preg_replace('/\s*-\s*(VM|NM)$/', '', $session->name);
+        $groupname = $workshopname.' - '.userdate($session->timestart, '%d.%m.%Y').' '.$slot;
+
+        // 1) Bereits gesetzte groupid vorhanden & gültig -> ggf. Namen synchronisieren.
+        if (!empty($session->groupid) && $DB->record_exists('groups', ['id'=>$session->groupid, 'courseid'=>$courseid])) {
+            $existing = $DB->get_record('groups', ['id'=>$session->groupid, 'courseid'=>$courseid], 'id,name');
+            if ($existing) {
+                if ($existing->name !== $groupname) {
+                    $existing->name = $groupname;
+                    try { groups_update_group($existing); } catch (\Throwable $e) {}
+                }
+                return (int)$existing->id;
+            }
+        }
+
+        // 2) Gruppe über Namen finden -> groupid in Session persistieren.
+        if ($existing = $DB->get_record('groups', ['courseid'=>$courseid, 'name'=>$groupname], 'id')) {
+            $gid = (int)$existing->id;
+            if ((int)($session->groupid ?? 0) !== $gid && !empty($session->id)) {
+                try { $DB->update_record('workshopbooking_session', (object)['id'=>$session->id, 'groupid'=>$gid]); } catch (\Throwable $e) {}
+                $session->groupid = $gid;
+            }
+            return $gid;
+        }
+
+        // 3) Falls nicht gefunden und Erstellen nicht erlaubt -> 0 zurück.
+        if (!$createmissing) {
+            return 0;
+        }
+
+        // 4) Gruppe erstellen und in Session persistieren.
+        $contextcourse = context_course::instance($courseid);
+        require_capability('moodle/course:managegroups', $contextcourse);
+        try {
+            $gid = (int)groups_create_group((object)[
+                'courseid' => $courseid,
+                'name' => $groupname,
+                'timecreated' => time(),
+                'timemodified'=> time()
+            ]);
+            if ($gid && !empty($session->id)) {
+                try { $DB->update_record('workshopbooking_session', (object)['id'=>$session->id, 'groupid'=>$gid]); } catch (\Throwable $e) {}
+                $session->groupid = $gid;
+            }
+            return $gid;
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+}
+
+/* ===== Rollenlogik ===== */
+$canview   = has_capability('mod/workshopbooking:viewparticipants', $context);
+$canmanage = has_capability('mod/workshopbooking:manage', $context);
+$istrainer_nonedit = ($canview && !$canmanage && !is_siteadmin()); // Trainer/in ohne Bearbeitungsrecht
+$istrainer_any     = ($canview || $canmanage) && !is_siteadmin();
+
+/* ===== sesskey redirect helper ===== */
+$sessionid = optional_param('sessionid', 0, PARAM_INT);
+$haskey    = optional_param('sesskey', null, PARAM_RAW);
+if (!empty($action) && empty($haskey)) {
+    $redir = new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id, 'action'=>$action]);
+    if (!empty($sessionid)) { $redir->param('sessionid', $sessionid); }
+    $redir->param('which', $which);
+    $redir->param('sesskey', sesskey());
+    redirect($redir, '', 0);
+}
+
+/* ===== Admin-Row-Aktionen ===== */
+if ($admact && $bid && $canmanage) {
+    require_sesskey();
+
+    $booking = $DB->get_record('workshopbooking_booking', ['id'=>$bid], '*', MUST_EXIST);
+    $session = $DB->get_record('workshopbooking_session', ['id'=>$booking->sessionid], '*', MUST_EXIST);
+
+    if ($admact === 'confirm')   {
+        // Enforce per-instance cap for confirmed bookings.
+        $maxcap = (int)($instance->maxbookingsperuser ?? 0);
+        if ($maxcap > 0) {
+            $uconf = (int)$DB->count_records_sql(
+                "SELECT COUNT(1)
+                   FROM {workshopbooking_booking} b
+                   JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                  WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+                ['uid'=>$booking->userid, 'iid'=>$instance->id]
+            );
+            if ($uconf >= $maxcap) {
+                \core\notification::warning(get_string('note_maxreached_admin', 'mod_workshopbooking'));
+                $admact = ''; // abort change
+            } else {
+                $booking->status = 1;
+            }
+        } else {
+            $booking->status = 1;
+        }
+    }
+    if ($admact === 'decline')   { $booking->status = 3; }
+    if ($admact === 'enable')    { $booking->status = 0; }
+
+    $DB->update_record('workshopbooking_booking', $booking);
+
+    if ($admact === 'confirm') {
+        $gid = workshopbooking_ensure_group_for_session($session, $cm, $instance);
+        if ($gid) {
+            require_once($CFG->dirroot.'/group/lib.php');
+            try { if (!groups_is_member($gid, $booking->userid)) { groups_add_member($gid, $booking->userid); } } catch (\Throwable $e) {}
+        }
+    }
+
+    $back = new moodle_url('/mod/workshopbooking/view.php', [
+        'id'=>$cm->id,'action'=>'participants','which'=>$which,'sbgroupid'=>$groupid,
+        'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+    ]);
+    redirect($back, '', 0);
+}
+
+/* ===== Serie / Gruppen / CSV ===== */
+
+// Serie erzeugen/aktualisieren (nur Manager)
+if ($action === 'generate' && $canmanage) {
+    \mod_workshopbooking\local\schema::ensure();
+    require_sesskey();
+    \mod_workshopbooking\local\bookingmanager::create_series($instance, $cm->id);
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+}
+
+// Gruppen reparieren / erzeugen (nur Manager)
+if ($action === 'repairgroups') {
+    if (!$canmanage && !has_capability('moodle/course:managegroups', $coursecontext)) {
+        print_error('nopermissions', 'error', '', 'repairgroups');
+    }
+    require_sesskey();
+    require_once($CFG->dirroot . '/group/lib.php');
+
+    $allsessions = $DB->get_records('workshopbooking_session', ['workshopbookingid'=>$instance->id]);
+    foreach ($allsessions as $sess) {
+        workshopbooking_ensure_group_for_session($sess, $cm, $instance);
+    }
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+}
+
+// CSV Export – Manager ODER Non-Editing-Trainer
+if ($action === 'exportcsv' && ($canmanage || $istrainer_nonedit)) {
+    require_sesskey();
+
+    $filtergroupid = optional_param('sbgroupid', 0, PARAM_INT);
+    $qf       = optional_param('q', '', PARAM_RAW_TRIMMED);
+    $slotff   = optional_param('slot', '', PARAM_ALPHA);
+    $periodf  = optional_param('period', 'all', PARAM_ALPHA);
+    $statusff = optional_param('status', 'all', PARAM_ALPHA);
+
+    $now = time();
+    $sessions = $DB->get_records_select('workshopbooking_session', "workshopbookingid = ? AND timeend > 0", [$instance->id]);
+
+    $daystart   = usergetmidnight($now);
+    $dayend     = $daystart + 86400;
+    $monthstart = make_timestamp((int)date('Y', $now), (int)date('m', $now), 1);
+    $monthend   = make_timestamp((int)date('Y', $now), (int)date('m', $now) + 1, 1);
+
+    $sessionids = [];
+    foreach ($sessions as $s) {
+        // robust nach Gruppe filtern (ohne neue Gruppen zu erzeugen)
+        if (!empty($filtergroupid)) {
+            $gid = (int)($s->groupid ?? 0);
+            if ($gid !== (int)$filtergroupid) {
+                $gid = (int)workshopbooking_ensure_group_for_session($s, $cm, $instance, false);
+            }
+            if ($gid !== (int)$filtergroupid) { continue; }
+        }
+
+        if ($qf !== '') {
+            $hay = core_text::strtolower((string)($s->name ?? ''));
+            if (mb_strpos($hay, core_text::strtolower($qf)) === false) { continue; }
+        }
+        if ($slotff !== '' && (!isset($s->slot) || $s->slot !== $slotff)) { continue; }
+        if ($periodf === 'upcoming' && $s->timestart < $now) { continue; }
+        if ($periodf === 'today'    && !($s->timestart >= $daystart && $s->timestart < $dayend)) { continue; }
+        if ($periodf === 'month'    && !($s->timestart >= $monthstart && $s->timestart < $monthend)) { continue; }
+        if ($periodf === 'past'     && $s->timestart >= $now) { continue; }
+
+        $counts = \mod_workshopbooking\local\bookingmanager::session_counts($s->id);
+        $isfull = ($counts['confirmed'] >= $s->capacitymax);
+        $windowopen = (empty($s->bookingopen) || $now >= $s->bookingopen)
+                   && (empty($s->bookingclose) || $now <= $s->bookingclose)
+                   && ($now < $s->timestart);
+
+        if ($statusff === 'offen'  && ($isfull || !$windowopen)) { continue; }
+        if ($statusff === 'voll'   && !$isfull) { continue; }
+        if ($statusff === 'closed' && $windowopen) { continue; }
+
+        $sessionids[] = (int)$s->id;
+    }
+
+    while (ob_get_level()) { @ob_end_clean(); }
+    $export = new csv_export_writer();
+    $export->set_filename('workshopbooking_export_'.$instance->id);
+
+    $export->add_data([
+        wsb_str('col_session','Session'),
+        wsb_str('col_slot','Slot'),
+        wsb_str('col_date','Beginn'),
+        wsb_str('col_userid','User-ID'),
+        wsb_str('col_username','Username'),
+        wsb_str('col_user','Teilnehmer/in'),
+        wsb_str('col_email','E-Mail'),
+        wsb_str('col_status','Status'),
+        wsb_str('col_created','Angelegt am')
+    ]);
+
+    if (!empty($sessionids)) {
+        list($insql, $inparams) = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sid');
+        $sql = "SELECT b.id AS id, s.name AS sessionname, s.slot, s.timestart, s.timeend,
+                       u.id AS userid, u.username, u.firstname, u.lastname, u.email,
+                       b.status, b.timecreated
+                  FROM {workshopbooking_booking} b
+                  JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                  JOIN {user} u ON u.id = b.userid
+                 WHERE s.workshopbookingid = :sid
+                   AND s.id $insql
+                   AND b.status IN (0,1,3,4)
+              ORDER BY s.timestart ASC, u.lastname ASC, u.firstname ASC";
+        $params = ['sid'=>$instance->id] + $inparams;
+        $rows = $DB->get_records_sql($sql, $params);
+
+        foreach ($rows as $r) {
+            $statuslabel = ($r->status == 1) ? wsb_str('status_confirmed','Bestätigt')
+                         : (($r->status == 3) ? wsb_str('declined','Absage')
+                         : (($r->status == 4) ? 'Absage (seitens Teilnehmer/in)'
+                         : wsb_str('pending','Ausstehend')));
+            $export->add_data([
+                $r->sessionname, $r->slot,
+                userdate($r->timestart, '%Y-%m-%d %H:%M'),
+                $r->userid, $r->username,
+                fullname((object)['firstname'=>$r->firstname,'lastname'=>$r->lastname]),
+                $r->email, $statuslabel,
+                userdate($r->timecreated, '%Y-%m-%d %H:%M')
+            ]);
+        }
+    }
+
+    $export->download_file(); exit;
+}
+
+/* ===== Buchen / Stornieren (Teilnehmer) ===== */
+
+// Trainer (alle) dürfen sich NICHT selbst anmelden/stornieren
+if ($action === 'signup' && $sessionid) {
+    // Block: Teilnehmer/in hat Limit erreicht -> keine neue Anmeldung, stattdessen Hinweis.
+    if ($userlimit_reached) {
+        \core\notification::warning(get_string('note_maxreached_block','mod_workshopbooking'));
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id])); // abort signup
+    }
+
+    require_sesskey();
+    if ($istrainer_any) {
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+    }
+    $status = \mod_workshopbooking\local\bookingmanager::book($sessionid, $USER->id, $cm->id, (int)$instance->maxbookingsperuser);
+
+    if ($status == 1) {
+        $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid], '*', MUST_EXIST);
+        $gid = workshopbooking_ensure_group_for_session($session, $cm, $instance);
+        if ($gid) { require_once($CFG->dirroot . '/group/lib.php'); try { if (!groups_is_member($gid, $USER->id)) { groups_add_member($gid, $USER->id); } } catch (\Throwable $e) {} }
+    }
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+}
+
+if ($action === 'cancel' && $sessionid) {
+    require_sesskey();
+    if ($istrainer_any) {
+        redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+    }
+    if ($booking = $DB->get_record('workshopbooking_booking', ['sessionid'=>$sessionid,'userid'=>$USER->id])) {
+        if ((int)$booking->status === 0) {
+            $booking->status = 4;
+            $DB->update_record('workshopbooking_booking', $booking);
+        }
+    }
+    $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid]);
+    if ($session && !empty($session->groupid)) {
+        require_once($CFG->dirroot . '/group/lib.php');
+        try { if (groups_is_member($session->groupid, $USER->id)) { groups_remove_member($session->groupid, $USER->id); } } catch (\Throwable $e) {}
+    }
+    redirect(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id]), '', 0);
+}
+
+
+/* ===== Details (Teilnehmer + Admin) ===== */
+if ($action === 'details' && $sessionid) {
+    require_login($course, true, $cm);
+
+    $s = $DB->get_record('workshopbooking_session', ['id'=>$sessionid, 'workshopbookingid'=>$instance->id], '*', MUST_EXIST);
+
+    // Format strings
+    $formatdaytime = get_string('strftimedaydate', 'core_langconfig') . ', ' . get_string('strftimetime', 'core_langconfig');
+    $formattime    = get_string('strftimetime', 'core_langconfig');
+
+    $startstr = userdate((int)$s->timestart, $formatdaytime);
+    $durationhours = isset($instance->durationhours) ? (int)$instance->durationhours : (int)$instance->durationdays;
+    $durationhours = max(1, $durationhours);
+    $endts   = (int)$s->timestart + ($durationhours * 3600);
+    $endstr  = userdate($endts, $formattime);
+
+    $counts  = \mod_workshopbooking\local\bookingmanager::session_counts($s->id);
+    $min     = (int)($s->capacitymin ?? 0);
+    $max     = (int)($s->capacitymax ?? 0);
+    $booked  = (int)($counts['confirmed'] ?? 0);
+
+    echo $OUTPUT->header();
+    $displayname = preg_replace('/\s*-\s*(VM|NM)$/u', '', (string)($s->name ?? ''));
+    echo $OUTPUT->heading(format_string($displayname !== '' ? $displayname : wsb_str('pluginname','Workshop')));
+    // Resolve per-workshop URL + description (Multiple workshops mode)
+    $mwmap = !empty($instance->multiworkshops) ? wsb_parse_workshopnames((string)($instance->workshopnames ?? '')) : [];
+    $mwinfo = $mwmap[$displayname] ?? ['url'=>'', 'desc'=>''];
+    $mwurl  = trim((string)($mwinfo['url'] ?? ''));
+    $mwdesc = trim((string)($mwinfo['desc'] ?? ''));
+        
+
+    echo html_writer::start_div('card');
+    echo html_writer::start_div('card-body');
+
+    echo html_writer::tag('div', $startstr . ' — ' . $endstr, ['class'=>'mb-2']);
+    echo html_writer::tag('div', 'min / max / gebucht: ' . $min . ' / ' . $max . ' / ' . $booked, ['class'=>'text-muted']);
+
+    // Show user's status chip if any
+    $already = $DB->get_record('workshopbooking_booking', ['sessionid'=>$s->id,'userid'=>$USER->id]);
+    if ($already) {
+        if ((int)$already->status === 1) {
+            echo sb_status_chip('ok', wsb_str('status_confirmed','Bestätigt'));
+        } else if ((int)$already->status === 0) {
+            echo sb_status_chip('pend', wsb_str('pending','Ausstehend'));
+        } else if (in_array((int)$already->status, [3,4], true)) {
+            echo sb_status_chip('decline', wsb_str('declined','Absage'));
+        }
+    }
+
+    echo html_writer::end_div(); // card-body
+    echo html_writer::end_div(); // card
+    // Instance intro (activity description)
+    if (!empty($instance->intro)) {
+        echo html_writer::tag('h3', wsb_str('details_about','Informationen'));
+        echo format_text($instance->intro, $instance->introformat, ['context'=>$context, 'overflowdiv'=>true]);
+    }
+    
+
+    $backurl = new moodle_url('/mod/workshopbooking/view.php', [
+        'id'=>$cm->id,'sbgroupid'=>$groupid,'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+    ]);
+    
+    // Per-workshop description + external link
+    if ($mwdesc !== '') {
+        echo html_writer::tag('h3', wsb_str('workshop_shortdesc','Kurzbeschreibung'), ['class'=>'mt-4 mb-2']);
+        $mwdesc_html = str_replace("\n", "<br>", $mwdesc);
+    echo html_writer::div(format_text($mwdesc_html, FORMAT_HTML, ['context'=>$context, 'filter'=>true]), 'mb-3');
+    }
+    // Buttons inline (Zum Workshop + Zurück)
+    echo html_writer::start_div('d-flex align-items-center mt-2');
+    if ($mwurl !== '') {
+        echo html_writer::link($mwurl, wsb_str('cta_goto_workshop','Zum Workshop'),
+            ['class'=>'btn btn-primary mr-2','target'=>'_blank','rel'=>'noopener']);
+    }
+    echo html_writer::link($backurl, get_string('back'), ['class'=>'btn btn-secondary']);
+    echo html_writer::end_div();
+    echo $OUTPUT->footer();
+    exit;
+}
+
+/* ===== Teilnehmerlisten (Admin / Trainer) ===== */
+if ($action === 'participants' && has_any_capability(['mod/workshopbooking:manage','mod/workshopbooking:viewparticipants'], $context)) {
+
+    // Non-Editing-Trainer: erzwinge Sicht auf "confirmed"
+    if ($istrainer_nonedit) {
+        $which = 'confirmed';
+    }
+
+    $filtergroupid = optional_param('sbgroupid', 0, PARAM_INT);
+    $qf       = optional_param('q', '', PARAM_RAW_TRIMMED);
+    $slotff   = optional_param('slot', '', PARAM_ALPHA);
+    $periodf  = optional_param('period', 'all', PARAM_ALPHA);
+    $statusff = optional_param('status', 'all', PARAM_ALPHA);
+    $which    = optional_param('which', $which ?: '', PARAM_ALPHA);
+
+    
+echo $OUTPUT->header();
+$titlemap = [
+        'confirmed'=>wsb_str('participants_heading','Angemeldete Teilnehmer/innen'),
+        'pending'  =>wsb_str('pending','Ausstehend'),
+        'declined' =>wsb_str('declined','Abgesagte Buchungen'),
+    ];
+    $heading = $titlemap[$which] ?? wsb_str('participants_heading','Angemeldete Teilnehmer/innen');
+    echo $OUTPUT->heading($heading);
+
+    // Sessions wie im Grid filtern
+    $now = time();
+    $sessions = $DB->get_records_select('workshopbooking_session', "workshopbookingid = ? AND timeend > 0", [$instance->id]);
+    $daystart   = usergetmidnight($now);
+    $dayend     = $daystart + 86400;
+    $monthstart = make_timestamp((int)date('Y', $now), (int)date('m', $now), 1);
+    $monthend   = make_timestamp((int)date('Y', $now), (int)date('m', $now) + 1, 1);
+
+    $sessionids = [];
+    foreach ($sessions as $s) {
+        // robust nach gewählter Gruppe filtern
+        if (!empty($filtergroupid)) {
+            $gid = (int)($s->groupid ?? 0);
+            if ($gid !== (int)$filtergroupid) {
+                $gid = (int)workshopbooking_ensure_group_for_session($s, $cm, $instance, false);
+            }
+            if ($gid !== (int)$filtergroupid) { continue; }
+        }
+
+        if ($qf !== '') {
+            $hay = core_text::strtolower((string)($s->name ?? ''));
+            if (mb_strpos($hay, core_text::strtolower($qf)) === false) { continue; }
+        }
+        if ($slotff !== '' && (!isset($s->slot) || $s->slot !== $slotff)) { continue; }
+        if ($periodf === 'upcoming' && $s->timestart < $now) { continue; }
+        if ($periodf === 'today'    && !($s->timestart >= $daystart && $s->timestart < $dayend)) { continue; }
+        if ($periodf === 'month'    && !($s->timestart >= $monthstart && $s->timestart < $monthend)) { continue; }
+        if ($periodf === 'past'     && $s->timestart >= $now) { continue; }
+
+        $counts = \mod_workshopbooking\local\bookingmanager::session_counts($s->id);
+        $isfull = ($counts['confirmed'] >= $s->capacitymax);
+        $windowopen = (empty($s->bookingopen) || $now >= $s->bookingopen)
+                   && (empty($s->bookingclose) || $now <= $s->bookingclose)
+                   && ($now < $s->timestart);
+
+        if ($statusff === 'offen'  && ($isfull || !$windowopen)) { continue; }
+        if ($statusff === 'voll'   && !$isfull) { continue; }
+        if ($statusff === 'closed' && $windowopen) { continue; }
+
+        $sessionids[] = (int)$s->id;
+    }
+
+    $table = new html_table();
+    $table->head = [
+        wsb_str('col_session','Session'),
+        wsb_str('col_slot','Slot'),
+        wsb_str('col_date','Beginn'),
+        wsb_str('col_user','Teilnehmer/in'),
+        wsb_str('col_email','E-Mail'),
+        wsb_str('col_status','Status'),
+    ];
+    if ($canmanage) {
+                // Check per-user confirmed count for this instance to warn/disable confirm if limit reached.
+                $maxcap_inst = (int)($instance->maxbookingsperuser ?? 0);
+                $limitreached = false;
+                if ($maxcap_inst > 0) {
+                    $userconfirmed_for_inst = (int)$DB->count_records_sql(
+                        "SELECT COUNT(1)
+                           FROM {workshopbooking_booking} b
+                           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                          WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+                        ['uid'=>$r->userid, 'iid'=>$instance->id]
+                    );
+                    $limitreached = ($userconfirmed_for_inst >= $maxcap_inst);
+                }
+
+        $table->head[] = wsb_str('col_actions','Aktionen');
+    }
+
+    if (!empty($sessionids)) {
+        list($insql, $inparams) = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sid');
+        $sql = "SELECT b.id AS id, s.id AS sessionid, s.name AS sessionname, s.slot, s.timestart,
+                       u.id AS userid, u.firstname, u.lastname, u.email,
+                       b.status, b.timecreated
+                  FROM {workshopbooking_booking} b
+                  JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                  JOIN {user} u ON u.id = b.userid
+                 WHERE s.workshopbookingid = :sid
+                   AND s.id $insql
+                   AND b.status IN (0,1,3,4)
+              ORDER BY s.timestart ASC, u.lastname ASC, u.firstname ASC";
+        $params = ['sid'=>$instance->id] + $inparams;
+        $rows = $DB->get_records_sql($sql, $params);
+
+        foreach ($rows as $r) {
+            $effective = (int)$r->status;
+
+            if ($which === 'confirmed' && $effective !== 1) { continue; }
+            if ($which === 'declined'  && $effective !== 3 && $effective !== 4) { continue; }
+            if ($which === 'pending'   && $effective !== 0) { continue; }
+
+            $date   = userdate($r->timestart, get_string('strftimedate', 'langconfig'));
+            $uname  = fullname((object)['firstname'=>$r->firstname,'lastname'=>$r->lastname]);
+
+            $statuslabel = ($effective == 1)
+                ? wsb_str('status_confirmed','Bestätigt')
+                : (($effective == 3) ? wsb_str('declined','Absage')
+                   : (($effective == 4) ? 'Absage (seitens Teilnehmer/in)'
+                   : wsb_str('pending','Ausstehend')));
+
+            $rowcells = [
+                format_string($r->sessionname),
+                s($r->slot),
+                $date,
+                s($uname),
+                s($r->email),
+                $statuslabel,
+            ];
+
+            if ($canmanage) {
+                // Check per-user confirmed count for this instance to warn/disable confirm if limit reached.
+                $maxcap_inst = (int)($instance->maxbookingsperuser ?? 0);
+                $limitreached = false;
+                if ($maxcap_inst > 0) {
+                    $userconfirmed_for_inst = (int)$DB->count_records_sql(
+                        "SELECT COUNT(1)
+                           FROM {workshopbooking_booking} b
+                           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                          WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+                        ['uid'=>$r->userid, 'iid'=>$instance->id]
+                    );
+                    $limitreached = ($userconfirmed_for_inst >= $maxcap_inst);
+                }
+
+                $actions = [];
+                $base = new moodle_url('/mod/workshopbooking/view.php', [
+                    'id'=>$cm->id, 'action'=>'participants', 'which'=>$which,
+                    'sbgroupid'=>$groupid, 'q'=>$q, 'slot'=>$slotff, 'period'=>$periodf, 'status'=>$statusff,
+                    'sesskey'=>sesskey()
+                ]);
+                if ($effective === 0) {
+                    $u = clone $base; $u->param('admact','confirm'); $u->param('bid',$r->id);
+                     $actions[] = html_writer::tag('span', get_string('note_maxreached_admin','mod_workshopbooking'), ['class'=>'badge badge-warning mr-2']);
+$actions[] = html_writer::link($u, wsb_str('confirm','Bestätigen'), ['class'=>'btn btn-sm btn-success mr-1']);
+                    
+                    $u = clone $base; $u->param('admact','decline'); $u->param('bid',$r->id);
+                    $actions[] = html_writer::link($u, wsb_str('decline','Ablehnen'), ['class'=>'btn btn-sm btn-secondary']);
+                } else if ($effective === 1) {
+                    $u = clone $base; $u->param('admact','decline'); $u->param('bid',$r->id);
+                    $actions[] = html_writer::link($u, wsb_str('decline','Ablehnen'), ['class'=>'btn btn-sm btn-secondary']);
+                } else if (in_array($effective, [3,4], true)) {
+                    $u = clone $base; $u->param('admact','enable'); $u->param('bid',$r->id);
+                    $actions[] = html_writer::link($u, wsb_str('enable','Buchung wieder ermöglichen'), ['class'=>'btn btn-sm btn-primary']);
+                }
+                $rowcells[] = html_writer::div(implode(' ', $actions));
+            }
+
+            $table->data[] = new html_table_row($rowcells);
+        }
+    }
+
+    echo html_writer::table($table);
+    echo $OUTPUT->footer(); exit;
+}
+
+/* ===== Seite rendern (Grid etc.) ===== */
+echo $OUTPUT->header();
+
+/* Admin-Leiste (oben) */
+if ($canview || $canmanage) {
+    $baseurl = new moodle_url('/mod/workshopbooking/view.php');
+
+    echo html_writer::start_div('card mb-2');
+    echo html_writer::start_div('card-body p-2');
+    echo html_writer::start_div('d-flex align-items-center flex-wrap');
+
+    // Gruppen-Auswahl
+    echo html_writer::tag('label', get_string('groups','group').' ', ['for'=>'sbgroupid','class'=>'form-label inline-label mb-0 mr-2']);
+    echo html_writer::start_tag('select', ['name'=>'sbgroupid','id'=>'sbgroupid','class'=>'custom-select','onchange'=>'wsbSyncGroup(this.value)']);
+    echo html_writer::tag('option', wsb_str('allgroups_local','Alle Gruppen'), ['value'=>0]);
+    $groups = groups_get_all_groups($course->id);
+    if (!empty($groups)) { foreach ($groups as $g) {
+        $attrs = ['value'=>$g->id]; if ((int)$groupid === (int)$g->id) { $attrs['selected']='selected'; }
+        echo html_writer::tag('option', format_string($g->name), $attrs);
+    } }
+    echo html_writer::end_tag('select');
+
+    // Manager-Buttons
+    if ($canmanage) {
+                // Check per-user confirmed count for this instance to warn/disable confirm if limit reached.
+                $maxcap_inst = (int)($instance->maxbookingsperuser ?? 0);
+                $limitreached = false;
+                if ($maxcap_inst > 0) {
+                    $userconfirmed_for_inst = (int)$DB->count_records_sql(
+                        "SELECT COUNT(1)
+                           FROM {workshopbooking_booking} b
+                           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                          WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+                        ['uid'=>$r->userid, 'iid'=>$instance->id]
+                    );
+                    $limitreached = ($userconfirmed_for_inst >= $maxcap_inst);
+                }
+
+        echo html_writer::link(new moodle_url('/mod/workshopbooking/view.php',
+            ['id'=>$cm->id,'action'=>'generate','sesskey'=>sesskey(),'sbgroupid'=>$groupid]),
+            wsb_str('btn_generate_series','Serie erzeugen/aktualisieren'), ['class'=>'btn btn-secondary ml-2']);
+
+        echo html_writer::link(new moodle_url('/mod/workshopbooking/view.php',
+            ['id'=>$cm->id,'action'=>'repairgroups','sesskey'=>sesskey(),'sbgroupid'=>$groupid]),
+            wsb_str('creategroups','Gruppen erzeugen'), ['class'=>'btn btn-secondary ml-2']);
+    }
+
+    // Listen-Buttons (übernehmen NUR aktuelle URL-Filter)
+    $listbuttons = $canmanage
+        ? [
+            ['which'=>'confirmed', 'label'=>wsb_str('participants_heading','Angemeldete Teilnehmer/innen')],
+            ['which'=>'pending',   'label'=>wsb_str('pending','Ausstehend')],
+            ['which'=>'declined',  'label'=>wsb_str('declined','Abgesagte Buchungen')],
+          ]
+        : [
+            ['which'=>'confirmed', 'label'=>wsb_str('participants_heading','Angemeldete Teilnehmer/innen')],
+          ];
+
+    foreach ($listbuttons as $lb) {
+        echo html_writer::start_tag('form', ['method'=>'get','action'=>$baseurl,'class'=>'m-0 ml-2']);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'id','value'=>$cm->id]);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'action','value'=>'participants']);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'which','value'=>$lb['which']]);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'sesskey','value'=>sesskey()]);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'sbgroupid','class'=>'js-wsb-sbgroupid','value'=>$groupid]);
+        echo html_writer::tag('button', $lb['label'], ['type'=>'submit','class'=>'btn btn-secondary']);
+        echo html_writer::end_tag('form');
+    }
+
+    // CSV-Export: Manager ODER Non-Editing-Trainer
+    if ($canmanage || $istrainer_nonedit) {
+        echo html_writer::start_tag('form', ['method'=>'get','action'=>$baseurl,'class'=>'m-0 ml-2']);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'id','value'=>$cm->id]);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'action','value'=>'exportcsv']);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'sesskey','value'=>sesskey()]);
+        echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'sbgroupid','class'=>'js-wsb-sbgroupid','value'=>$groupid]);
+        echo html_writer::tag('button', wsb_str('btn_exportcsv','CSV exportieren'), ['type'=>'submit','class'=>'btn btn-secondary']);
+        echo html_writer::end_tag('form');
+    }
+echo html_writer::end_div();
+    // Teilnehmer/in Hinweis oben, wenn Limit erreicht.
+    if (!$istrainer_any && !empty($instance->maxbookingsperuser)) {
+        $userconfirmedcount_top = (int)$DB->count_records_sql(
+            "SELECT COUNT(1) FROM {workshopbooking_booking} b JOIN {workshopbooking_session} s ON s.id=b.sessionid
+              WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+            ['uid'=>$USER->id, 'iid'=>$instance->id]
+        );
+        if ($userconfirmedcount_top >= (int)$instance->maxbookingsperuser) {
+            echo html_writer::div(get_string('note_maxreached', 'mod_workshopbooking'), 'alert alert-warning');
+        }
+    }
+
+
+    echo html_writer::tag('hr', '', ['class' => 'my-2']);
+    echo html_writer::div(
+        '<strong>Hinweis:</strong> Die <em>gewählte Gruppe</em> oben wird von Listen &amp; CSV übernommen.',
+        'small text-muted'
+    );
+// Nur für Admins/Manager anzeigen (bei Bedarf $canview mit aufnehmen).
+if ($canmanage) {
+                // Check per-user confirmed count for this instance to warn/disable confirm if limit reached.
+                $maxcap_inst = (int)($instance->maxbookingsperuser ?? 0);
+                $limitreached = false;
+                if ($maxcap_inst > 0) {
+                    $userconfirmed_for_inst = (int)$DB->count_records_sql(
+                        "SELECT COUNT(1)
+                           FROM {workshopbooking_booking} b
+                           JOIN {workshopbooking_session} s ON s.id = b.sessionid
+                          WHERE b.userid = :uid AND b.status = 1 AND s.workshopbookingid = :iid",
+                        ['uid'=>$r->userid, 'iid'=>$instance->id]
+                    );
+                    $limitreached = ($userconfirmed_for_inst >= $maxcap_inst);
+                }
+
+    echo html_writer::start_div('small text-muted mt-2'); // gleiche Farbe & Schriftgröße wie Hinweis
+
+    echo html_writer::tag('strong', 'Buchungen verwalten – Kurzüberblick');
+
+    // Status-Bedeutungen
+    echo html_writer::start_tag('ul', ['class' => 'mb-2']);
+    echo html_writer::tag('li', '<strong>Ausstehend</strong> – wartet auf Bestätigung (Status 0).');
+    echo html_writer::tag('li', '<strong>Bestätigt</strong> – fester Platz; ggf. automatische Zuordnung zur Kursgruppe (Status 1).');
+    echo html_writer::tag('li', '<strong>Absage</strong> – vom Admin abgelehnt (Status 3).');
+    echo html_writer::tag('li', '<strong>Absage (seitens Teilnehmer/in)</strong> – selbst storniert (Status 4).');
+    echo html_writer::end_tag('ul');
+
+    // Typische Aktionen
+    echo html_writer::tag('strong', 'Typische Aktionen:');
+    echo html_writer::start_tag('ul', ['class' => 'mb-0']);
+    echo html_writer::tag('li', '<em>Bestätigen</em> → setzt von „Ausstehend“ (0) auf „Bestätigt“ (1) und fügt die Person ggf. in die passende Kursgruppe ein.');
+    echo html_writer::tag('li', '<em>Ablehnen/Stornieren</em> → setzt auf „Absage“ (3).');
+    echo html_writer::tag('li', '<em>Buchung wieder ermöglichen</em> → setzt zurück auf „Ausstehend“ (0).');
+    echo html_writer::tag('li', '<em>Export</em> → „Listen &amp; CSV“ nutzt die oben gewählte Gruppe.');
+    echo html_writer::end_tag('ul');
+
+    echo html_writer::end_div();
+}
+
+    echo html_writer::end_div();
+    echo html_writer::end_div();
+
+    // Sync: setzt sbgroupid in ALLEN relevanten Formularen
+    $js = "function wsbSyncGroup(v){
+      var els = document.querySelectorAll('.js-wsb-sbgroupid');
+      for (var i = 0; i < els.length; i++) { els[i].value = v; }
+    }";
+    echo html_writer::script($js);
+}
+
+/* Info-Zeile */
+$contactlabel = 'Ticket an den Support schicken';
+$contactlink  = 'mailto:support.moodle@weidinger.com';
+$info = html_writer::start_div('mt-2 small text-muted');
+$info .= html_writer::tag('strong', 'Entwickler').': Husam Afandi | ';
+$info .= html_writer::tag('strong', 'Kontakt').': '.html_writer::link($contactlink, $contactlabel, ['class'=>'link-secondary']);
+$info .= html_writer::end_div();
+echo $info;
+
+/* ===== Filter + Legende im Rahmen (unten) – NUR für Teilnehmer/innen ===== */
+if (!($canview || $canmanage)) {
+    echo html_writer::start_div('card my-3');
+    echo html_writer::start_div('card-body p-2');
+
+    echo html_writer::start_tag('form', ['method'=>'get','action'=>new moodle_url('/mod/workshopbooking/view.php'),'class'=>'sb-filter form-inline mb-2']);
+    echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'id','value'=>$cm->id]);
+    echo html_writer::empty_tag('input', ['type'=>'hidden','name'=>'sbgroupid','value'=>$groupid]);
+    echo html_writer::empty_tag('input', ['type'=>'text','name'=>'q','value'=>$q,'class'=>'form-control','placeholder'=>'Titel…']);
+    $slotopts   = ['' => 'Alle Slots', 'NM' => 'NM', 'VM' => 'VM'];  echo html_writer::select($slotopts, 'slot', $slotf, null, ['class'=>'custom-select']);
+    $periodopts = ['upcoming'=>'Künftig','today'=>'Heute','month'=>'Dieser Monat','all'=>'Alle','past'=>'Vergangen'];  echo html_writer::select($periodopts, 'period', $period, null, ['class'=>'custom-select']);
+    $statusopts = [
+        'all'      =>'Status',
+        'offen'    =>'Offen',
+        'voll'     =>'Ausgebucht',
+        'closed'   =>'Die Buchung ist geschlossen',
+        'pending'  =>'Ausstehend',
+        'confirmed'=>'Bestätigt',
+        'declined' =>'Absage',
+    ];
+    echo html_writer::select($statusopts, 'status', $statusf, null, ['class'=>'custom-select']);
+    echo html_writer::empty_tag('input', ['type'=>'submit','class'=>'btn btn-secondary','value'=>'Filtern']);
+    echo html_writer::link(new moodle_url('/mod/workshopbooking/view.php', ['id'=>$cm->id,'sbgroupid'=>$groupid]), 'Zurücksetzen', ['class'=>'btn btn-link p-0']);
+    echo html_writer::end_tag('form');
+
+    // Legende
+    $legendparts = [];
+    $legendparts[] = sb_status_chip('ok', wsb_str('status_confirmed','Bestätigt')).' Du hast einen fixen Platz.';
+    $legendparts[] = sb_status_chip('pend', wsb_str('pending','Ausstehend')).' Deine Buchung wartet auf Bestätigung.';
+    $legendparts[] = sb_status_chip('decline', 'Absage / Absage (seitens Ihnen)').' Abgelehnt bzw. selbst storniert.';
+    $legendparts[] = sb_status_chip('opens', wsb_str('opensat','Öffnet am …')).' Anmeldefenster öffnet am angegebenen Zeitpunkt.';
+    $legendparts[] = sb_status_chip('closed', wsb_str('bookingclosed','Die Buchung ist geschlossen')).' Anmeldefenster ist aktuell geschlossen.';
+    $legendparts[] = sb_status_chip('full', wsb_str('full','Ausgebucht')).' Alle Plätze sind belegt.';
+    $legendparts[] = sb_status_chip('past', wsb_str('past','Abgelaufen')).' Termin ist bereits vorbei.';
+
+    // Admin-only stats link.
+    if (is_siteadmin()) {
+        $statsurl = new moodle_url('/mod/workshopbooking/stats.php', ['id'=>$cm->id]);
+        echo html_writer::div(html_writer::link($statsurl, get_string('stats','mod_workshopbooking'), ['class'=>'btn btn-secondary float-right ml-2']), 'mb-2');
+    }
+
+    echo html_writer::div('<strong>Legende</strong> · '.implode(' | ', $legendparts), 'small text-muted');
+
+    echo html_writer::end_div();
+    echo html_writer::end_div();
+}
+
+/* ===== Grid (Karten) ===== */
+$now = time();
+$sessions = $DB->get_records_select('workshopbooking_session', "workshopbookingid = ? AND timeend > 0", [$instance->id], "timestart ASC");
+
+$formatdaytime = get_string('strftimedaydatetime', 'core_langconfig');
+$formattime    = get_string('strftimetime', 'core_langconfig');
+$daystart   = usergetmidnight($now);
+$dayend     = $daystart + 86400;
+$monthstart = make_timestamp((int)date('Y', $now), (int)date('m', $now), 1);
+$monthend   = make_timestamp((int)date('Y', $now) + (int)(date('m',$now)==12 ? 1:0), (int)date('m', $now) % 12 + 1, 1);
+
+$filtered = [];
+foreach ($sessions as $s) {
+    // Nach gewählter Gruppe filtern (robust, ohne neue Gruppen zu erzeugen)
+    if (!empty($groupid)) {
+        $gid = (int)($s->groupid ?? 0);
+        if ($gid !== (int)$groupid) {
+            $gid = (int)workshopbooking_ensure_group_for_session($s, $cm, $instance, false);
+        }
+        if ($gid !== (int)$groupid) { continue; }
+    }
+
+    if ($q !== '') { $hay = core_text::strtolower((string)($s->name ?? '')); if (mb_strpos($hay, core_text::strtolower($q)) === false) { continue; } }
+    if ($slotf !== '' && (!isset($s->slot) || $s->slot !== $slotf)) { continue; }
+    if ($period === 'upcoming' && $s->timestart < $now) { continue; }
+    if ($period === 'today'    && !($s->timestart >= $daystart && $s->timestart < $dayend)) { continue; }
+    if ($period === 'month'    && !($s->timestart >= $monthstart && $s->timestart < $monthend)) { continue; }
+    if ($period === 'past'     && $s->timestart >= $now) { continue; }
+
+    $counts = \mod_workshopbooking\local\bookingmanager::session_counts($s->id);
+    $isfull = ($counts['confirmed'] >= $s->capacitymax);
+    $windowopen = (empty($s->bookingopen) || $now >= $s->bookingopen)
+               && (empty($s->bookingclose) || $now <= $s->bookingclose)
+               && ($now < $s->timestart);
+
+    if ($statusf === 'offen'   && ($isfull || !$windowopen)) { continue; }
+    if ($statusf === 'voll'    && !$isfull) { continue; }
+    if ($statusf === 'closed'  && $windowopen) { continue; }
+
+    $s->_counts = $counts; $s->_isfull = $isfull; $s->_open = $windowopen;
+    $filtered[] = $s;
+}
+usort($filtered, fn($a,$b)=>($a->timestart <=> $b->timestart));
+
+echo html_writer::start_div('sb-grid mt-3');
+if (!$filtered) { echo html_writer::div(wsb_str('nosessions','Keine Termine gefunden.'), 'alert alert-info'); }
+
+foreach ($filtered as $s) {
+    $displayname = preg_replace('/\s*-\s*(VM|NM)$/u', '', (string)($s->name ?? ''));
+$title    = format_string($displayname !== '' ? $displayname : wsb_str('pluginname','Workshop'));
+    $startstr = userdate((int)$s->timestart, $formatdaytime);
+    $durationhours = isset($instance->durationhours) ? (int)$instance->durationhours : (int)$instance->durationdays;
+    $durationhours = max(1, $durationhours);
+    $endts   = $s->timestart + ($durationhours * 3600);
+    $endstr  = userdate($endts, $formattime);
+    $slot    = !empty($s->slot) ? s($s->slot) : '';
+
+    $min      = (int)($s->capacitymin ?? 0);
+    $max      = (int)($s->capacitymax ?? 0);
+    $booked   = (int)($s->_counts['confirmed'] ?? 0);
+    $capline  = 'min / max / gebucht: '.$min.' / '.$max.' / '.$booked;
+
+    $already = $DB->get_record('workshopbooking_booking', ['sessionid'=>$s->id,'userid'=>$USER->id]);
+
+    $chips  = [];
+    $btn    = '';
+
+    if ($already && (int)$already->status === 1) {
+        $chips[] = sb_status_chip('ok', wsb_str('status_confirmed','Bestätigt'));
+        // Add "Details" button for confirmed bookings
+        $detailsurl = new moodle_url('/mod/workshopbooking/view.php', [
+            'id'=>$cm->id,'action'=>'details','sessionid'=>$s->id,
+            'sbgroupid'=>$groupid,'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+        ]);
+        $btn = html_writer::link($detailsurl, wsb_str('btn_details','Details'), ['class'=>'btn btn-secondary']);
+    } else if ($already && (int)$already->status === 0) {
+        $chips[] = sb_status_chip('pend', wsb_str('pending','Ausstehend'));
+        if (!$istrainer_any) {
+            $cancelurl = new moodle_url('/mod/workshopbooking/view.php', [
+                'id'=>$cm->id,'action'=>'cancel','sessionid'=>$s->id,'sesskey'=>sesskey(),
+                'sbgroupid'=>$groupid,'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+            ]);
+            $btn = html_writer::link($cancelurl, wsb_str('removesignup','Anmeldung löschen'), ['class'=>'btn btn-success']);
+        }
+    } else if ($already && (int)$already->status === 3) {
+        $chips[] = sb_status_chip('decline', wsb_str('declined','Absage'));
+    } else if ($already && (int)$already->status === 4) {
+        $chips[] = sb_status_chip('decline', 'Absage (seitens Ihnen)');
+    } else {
+        if (!$s->_open) {
+            if ($now >= $s->timestart) {
+                $chips[] = sb_status_chip('past', wsb_str('past','Abgelaufen'));
+            } elseif (!empty($s->bookingopen) && $now < $s->bookingopen) {
+                $chips[] = sb_status_chip('opens', wsb_str('opensat','Öffnet am …').' '.userdate($s->bookingopen, get_string('strftimedatetime', 'core_langconfig')));
+            } else {
+                $chips[] = sb_status_chip('closed', wsb_str('bookingclosed','Die Buchung ist geschlossen'));
+            }
+        } else {
+            if ($s->_isfull) {
+                $chips[] = sb_status_chip('full', wsb_str('full','Ausgebucht'));
+            } else {
+                if (!$istrainer_any) {
+                    $signupurl = new moodle_url('/mod/workshopbooking/view.php', [
+                        'id'=>$cm->id,'action'=>'signup','sessionid'=>$s->id,'sesskey'=>sesskey(),
+                        'sbgroupid'=>$groupid,'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+                    ]);
+                    $btn = $userlimit_reached ? html_writer::tag('button', wsb_str('signup','Anmelden'), ['class'=>'btn btn-primary','disabled'=>'disabled','title'=>get_string('note_maxreached_block','mod_workshopbooking')]) : html_writer::link($signupurl, wsb_str('signup','Anmelden'), ['class'=>'btn btn-primary']);
+                }
+            }
+        }
+    }
+
+    if ($statusf === 'pending'   && !($already && (int)$already->status===0)) { continue; }
+    if ($statusf === 'confirmed' && !($already && (int)$already->status===1)) { continue; }
+    if ($statusf === 'declined'  && !($already && in_array((int)$already->status,[3,4],true))) { continue; }
+
+    echo html_writer::start_div('sb-card');
+        echo html_writer::start_div('sb-card__head');
+            echo html_writer::tag('h3', $title, ['class' => 'sb-title']);
+        echo html_writer::end_div();
+        if ($slot) { echo sb_slot_badge($slot); }
+        echo html_writer::div($startstr.' — '.$endstr, 'sb-sub');
+        echo html_writer::div($capline, 'sb-cap');
+        if ($chips) { echo html_writer::div(implode(' ', $chips), 'sb-statuses'); }
+        
+        // If no action so far, but multiple-workshop URL/desc exists → show Details
+        if ($btn === '' && $already && (int)$already->status === 1) {
+            $mwmap = !empty($instance->multiworkshops) ? wsb_parse_workshopnames((string)($instance->workshopnames ?? '')) : [];
+            $mwinfo = $mwmap[$displayname] ?? null;
+            if ($mwinfo && (!empty($mwinfo['url']) || !empty($mwinfo['desc']))) {
+                $detailsurl = new moodle_url('/mod/workshopbooking/view.php', [
+                    'id'=>$cm->id,'action'=>'details','sessionid'=>$s->id,
+                    'sbgroupid'=>$groupid,'q'=>$q,'slot'=>$slotf,'period'=>$period,'status'=>$statusf
+                ]);
+                $btn = html_writer::link($detailsurl, wsb_str('btn_details','Details'), ['class'=>'btn btn-secondary']);
+            }
+        }
+    echo html_writer::div($btn, 'sb-actions');
+        if (!$istrainer_any && !empty($instance->maxbookingsperuser) && ($userconfirmedcount >= (int)$instance->maxbookingsperuser || $usertotalopen >= (int)$instance->maxbookingsperuser)) {
+            echo html_writer::div(get_string('note_maxreached', 'mod_workshopbooking'), 'small text-warning mt-1');
+        }
+    echo html_writer::end_div();
+}
+echo html_writer::end_div();
+
+$completion = new completion_info($course);
+$completion->set_module_viewed($cm);
+
+echo $OUTPUT->footer();

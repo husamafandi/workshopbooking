@@ -1,0 +1,91 @@
+<?php
+
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+$tasks = [
+
+
+
+
+
+
+    [
+
+
+
+
+
+
+        'classname' => '\mod_workshopbooking\task\process_sessions_task',
+
+
+
+
+
+
+        'blocking' => 0,
+
+
+
+
+
+
+        'minute' => '*/30',
+
+
+
+
+
+
+        'hour' => '*',
+
+
+
+
+
+
+        'day' => '*',
+
+
+
+
+
+
+        'dayofweek' => '*',
+
+
+
+
+
+
+        'month' => '*'
+
+
+
+
+
+
+    ]
+
+
+
+
+
+
+];
+
+
+
+
+
+

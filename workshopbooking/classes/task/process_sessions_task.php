@@ -1,0 +1,154 @@
+<?php
+
+
+
+
+
+
+namespace mod_workshopbooking\task;
+
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+
+
+
+
+
+
+
+use core\task\scheduled_task;
+
+
+
+
+
+
+use mod_workshopbooking\local\bookingmanager;
+
+
+
+
+
+
+
+
+
+
+
+
+
+class process_sessions_task extends scheduled_task {
+
+
+
+
+
+
+    public function get_name() {
+
+
+
+
+
+
+        return get_string('task_process_sessions', 'mod_workshopbooking');
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public function execute() {
+
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+
+        // Auto open/close markers are implicit by timestamps; here we promote waitlists when space occurs.
+
+
+
+
+
+
+        $sessions = $DB->get_records_select('workshopbooking_session', "status IN (0,1)");
+
+
+
+
+
+
+        foreach ($sessions as $s) {
+
+
+
+
+
+
+            bookingmanager::promote_waitlist($s->id);
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+        return true;
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+}
+
+
+
+
+
+

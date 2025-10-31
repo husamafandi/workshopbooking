@@ -1,0 +1,196 @@
+<?php
+namespace mod_workshopbooking\local;
+defined('MOODLE_INTERNAL') || die();
+
+use stdClass;
+use moodle_url;
+use context_module;
+use core_date;
+
+class bookingmanager {
+    public static function user_confirmed_count_global(int $userid, int $cmid): int {
+        global $DB;
+        // Count confirmed bookings across all sessions for this activity only.
+        $cm = get_coursemodule_from_id('workshopbooking', $cmid, 0, false, MUST_EXIST);
+        $sessions = $DB->get_records('workshopbooking_session', ['workshopbookingid' => $cm->instance], '', 'id');
+        if (empty($sessions)) { return 0; }
+        list($insql, $params) = $DB->get_in_or_equal(array_keys($sessions), SQL_PARAMS_NAMED);
+        $params['userid'] = $userid;
+        $params['status'] = 1;
+        return (int)$DB->count_records_select('workshopbooking_booking', "userid = :userid AND status = :status AND sessionid $insql", $params);
+    }
+
+    public static function session_counts(int $sessionid): array {
+        global $DB;
+        $confirmed = $DB->count_records('workshopbooking_booking', ['sessionid'=>$sessionid,'status'=>1]);
+        $waitlist = $DB->count_records('workshopbooking_booking', ['sessionid'=>$sessionid,'status'=>2]);
+        $pending  = $DB->count_records('workshopbooking_booking', ['sessionid'=>$sessionid,'status'=>0]);
+        return compact('confirmed','waitlist','pending');
+    }
+
+    public static function create_series(stdClass $instance, int $cmid): int {
+        global $DB;
+        if (empty($instance->recurenabled) || empty($instance->recurstart) || empty($instance->recurcount)) {
+            return 0;
+        }
+        $created = 0;
+        $duration = max(1, (int)$instance->durationdays) * DAYSECS;
+        $interval = max(1, (int)$instance->recurintervaldays) * DAYSECS;
+        $openoff  = (int)$instance->bookopenoffsetdays * DAYSECS;
+        $closeoff = (int)$instance->bookcloseoffsetdays * DAYSECS;
+
+        // $t base moved into per-workshop loop
+        
+        // Determine workshop names list.
+        $workshopnames = [];
+
+        // Parse names list; optional custom start date per line: "Name, DD.MM.YYYY"
+        $workshops = [];
+        foreach ($workshopnames as $ln) {
+            $wname = $ln;
+            $customstart = 0;
+            if (strpos($ln, ',') !== false) {
+                list($before, $after) = array_map('trim', explode(',', $ln, 2));
+                $wname = $before;
+                // Accept formats like 25.10.2025 or 25.10.2025 08:15
+                if (preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?)?$/', $after, $m)) {
+                    $day = (int)$m[1]; $mon = (int)$m[2]; $yr = (int)$m[3];
+                    $hh = isset($m[4]) ? (int)$m[4] : 0; $mm = isset($m[5]) ? (int)$m[5] : 0;
+                    $customstart = make_timestamp($yr, $mon, $day, $hh, $mm, 0);
+                }
+            }
+            $workshops[] = ['name'=>$wname, 'customstart'=>$customstart];
+        }
+        if (empty($workshops)) { $workshops = [['name'=>$instance->name, 'customstart'=>0]]; }
+        if (!empty($instance->multiworkshops) && !empty($instance->workshopnames)) {
+            $lines = preg_split('/\r\n|\r|\n/', trim($instance->workshopnames));
+            foreach ($lines as $ln) {
+                $ln = trim($ln);
+                if ($ln !== '') { $workshopnames[] = $ln; }
+            }
+        }
+        if (empty($workshopnames)) { $workshopnames = [$instance->name]; }
+for ($i=0; $i<(int)$instance->recurcount; $i++) {
+            // Morning slot (VM).
+            $vmstart = self::combine_day_hour($t, (int)$instance->vmstarthour);
+            $nmstart = self::combine_day_hour($t, (int)$instance->nmstarthour);
+            foreach ($workshops as $w) {
+                $wname = $w['name'];
+                $tbase = (int)$instance->recurstart;
+                if (!empty($w['customstart'])) { $tbase = (int)$w['customstart']; }
+                $t = $tbase + ($i * $interval);
+
+            foreach ([['VM',$vmstart], ['NM',$nmstart]] as $slotdef) {
+                [$slotlabel, $startts] = $slotdef;
+                $sess = (object)[
+                    'workshopbookingid' => $instance->id,
+                    'name' => $wname . " - $slotlabel",
+                    'slot' => $slotlabel,
+                    'timestart' => $startts,
+                    'timeend' => $startts + $duration,
+                    'bookingopen' => $startts - $openoff,
+                    'bookingclose' => $startts - $closeoff,
+                    'capacitymin' => (int)$instance->capacitymin ?: 10,
+                    'capacitymax' => (int)$instance->capacitymax ?: 20,
+                    'groupid' => 0,
+                    'status' => 0,
+                    'timecreated' => time()
+                ];
+                // Avoid duplicates for same timestart & slot.
+                $exists = $DB->record_exists('workshopbooking_session', [
+                    'workshopbookingid'=>$sess->workshopbookingid,
+                    'slot'=>$sess->slot,
+                    'timestart'=>$sess->timestart,
+                    'name'=>$sess->name
+                ]);
+                if (!$exists) {
+                    $DB->insert_record('workshopbooking_session', $sess);
+                    $created++;
+                }
+            }
+                        }
+            } // end foreach workshops
+            }
+            // next day in series is driven by $i loop
+
+        }
+        return $created;
+    }
+
+    private static function combine_day_hour(int $dayts, int $hour): int {
+        $d = usergetdate($dayts);
+        // Compose timestamp at given hour in server timezone.
+        return make_timestamp($d['year'], $d['mon'], $d['mday'], $hour, 0, 0);
+    }
+
+    public static function book(int $sessionid, int $userid, int $cmid, int $maxperuser): int {
+        // Returns status set: 1 confirmed, 2 waitlist, 0 pending.
+        global $DB;
+        $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid], '*', MUST_EXIST);
+        $counts = self::session_counts($sessionid);
+
+        // Enforce max per user (confirmed count only).
+        if ($maxperuser > 0) {
+            $current = self::user_confirmed_count_global($userid, $cmid);
+            if ($current >= $maxperuser) {
+                throw new \moodle_exception('maxbookingsreached', 'mod_workshopbooking');
+            }
+        }
+
+        // Within booking window?
+        $now = time();
+        if ($session->bookingopen && $now < $session->bookingopen) {
+            throw new \moodle_exception('bookingnotopen', 'mod_workshopbooking');
+        }
+        if ($session->bookingclose && $now > $session->bookingclose) {
+            throw new \moodle_exception('bookingclosed', 'mod_workshopbooking');
+        }
+
+        // Determine status (confirm or waitlist).
+        $status = ($counts['confirmed'] < $session->capacitymax) ? 1 : 2;
+
+        // Upsert booking.
+        $rec = $DB->get_record('workshopbooking_booking', ['sessionid'=>$sessionid,'userid'=>$userid]);
+        if ($rec) {
+            if ((int)$rec->status === 3) {
+                $rec->status = $status;
+                $DB->update_record('workshopbooking_booking', $rec);
+            } else {
+                // Already booked.
+                return (int)$rec->status;
+            }
+        } else {
+            $DB->insert_record('workshopbooking_booking', (object)[
+                'sessionid'=>$sessionid,
+                'userid'=>$userid,
+                'status'=>$status,
+                'timecreated'=>time()
+            ]);
+        }
+        return $status;
+    }
+
+    public static function cancel(int $sessionid, int $userid): void {
+        global $DB;
+        if ($rec = $DB->get_record('workshopbooking_booking', ['sessionid'=>$sessionid,'userid'=>$userid])) {
+            $rec->status = 3;
+            $DB->update_record('workshopbooking_booking', $rec);
+        }
+    }
+
+    public static function promote_waitlist(int $sessionid): int {
+        global $DB;
+        $session = $DB->get_record('workshopbooking_session', ['id'=>$sessionid], '*', MUST_EXIST);
+        $counts = self::session_counts($sessionid);
+        $slotsfree = max(0, $session->capacitymax - $counts['confirmed']);
+        if ($slotsfree <= 0) { return 0; }
+        $waiters = $DB->get_records('workshopbooking_booking', ['sessionid'=>$sessionid,'status'=>2], 'timecreated ASC', '*', 0, $slotsfree);
+        $promoted = 0;
+        foreach ($waiters as $w) {
+            $w->status = 1;
+            $DB->update_record('workshopbooking_booking', $w);
+            $promoted++;
+        }
+        return $promoted;
+    }
+}

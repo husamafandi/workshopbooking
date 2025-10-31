@@ -1,0 +1,95 @@
+<?php
+
+
+
+require_once($CFG->dirroot.'/course/moodleform_mod.php');
+
+
+
+class mod_workshopbooking_mod_form extends moodleform_mod {
+
+    public function definition() {
+
+        $mform = $this->_form;
+
+
+
+        // Standard activity name.
+
+        $mform->addElement('text', 'name', get_string('name'), ['size' => '64']);
+
+        $mform->setType('name', PARAM_TEXT);
+
+        $mform->addRule('name', null, 'required', null, 'client');
+
+
+
+        // Description/editor.
+
+        $this->standard_intro_elements();
+
+
+
+        $mform->addElement('header', 'availabilityhdr', get_string('availability', 'mod_workshopbooking'));
+
+        $mform->addElement('date_time_selector', 'signupstart', get_string('signupstart', 'mod_workshopbooking'), ['optional' => true]);
+
+        $mform->addElement('date_time_selector', 'signupend', get_string('signupend', 'mod_workshopbooking'), ['optional' => true]);
+
+// --- SimpleBooking: recurrence & limits ---
+        $mform->addElement('header', 'recurhdr', get_string('recurhdr', 'mod_workshopbooking'));
+
+        $mform->addElement('advcheckbox', 'recurenabled', get_string('recurenabled', 'mod_workshopbooking'));
+        $mform->setDefault('recurenabled', 1);
+
+        $mform->addElement('date_time_selector', 'recurstart', get_string('recurstart', 'mod_workshopbooking'));
+        $mform->setDefault('recurstart', time() + 7*24*3600);
+
+        $mform->addElement('text', 'recurcount', get_string('recurcount', 'mod_workshopbooking'));
+        $mform->setType('recurcount', PARAM_INT);
+        $mform->setDefault('recurcount', 12);
+
+        $mform->addElement('text', 'recurintervaldays', get_string('recurintervaldays', 'mod_workshopbooking'));
+        $mform->setType('recurintervaldays', PARAM_INT);
+        $mform->setDefault('recurintervaldays', 14);
+
+        $mform->addElement('text', 'durationdays', get_string('durationdays', 'mod_workshopbooking'));
+        $mform->setType('durationdays', PARAM_INT);
+        $mform->setDefault('durationdays', 14);
+
+        $mform->addElement('text', 'vmstarthour', get_string('vmstarthour', 'mod_workshopbooking'));
+        $mform->setType('vmstarthour', PARAM_INT);
+        $mform->setDefault('vmstarthour', 8);
+
+        $mform->addElement('text', 'nmstarthour', get_string('nmstarthour', 'mod_workshopbooking'));
+        $mform->setType('nmstarthour', PARAM_INT);
+        $mform->setDefault('nmstarthour', 13);
+
+        $mform->addElement('text', 'capacitymin', get_string('capacitymin', 'mod_workshopbooking'));
+        $mform->setType('capacitymin', PARAM_INT);
+        $mform->setDefault('capacitymin', 10);
+
+        $mform->addElement('text', 'capacitymax', get_string('capacitymax', 'mod_workshopbooking'));
+        $mform->setType('capacitymax', PARAM_INT);
+        $mform->setDefault('capacitymax', 20);
+
+        $mform->addElement('text', 'maxbookingsperuser', get_string('maxbookingsperuser', 'mod_workshopbooking'));
+        $mform->setType('maxbookingsperuser', PARAM_INT);
+        $mform->setDefault('maxbookingsperuser', 5);
+
+        $mform->addElement('text', 'bookopenoffsetdays', get_string('bookopenoffsetdays', 'mod_workshopbooking'));
+        $mform->setType('bookopenoffsetdays', PARAM_INT);
+        $mform->setDefault('bookopenoffsetdays', 7);
+
+        $mform->addElement('text', 'bookcloseoffsetdays', get_string('bookcloseoffsetdays', 'mod_workshopbooking'));
+        $mform->setType('bookcloseoffsetdays', PARAM_INT);
+        $mform->setDefault('bookcloseoffsetdays', 1);
+
+        $this->standard_coursemodule_elements();
+
+        $this->add_action_buttons();
+
+    }
+
+}
+

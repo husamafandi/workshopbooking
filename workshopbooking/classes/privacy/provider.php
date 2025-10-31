@@ -1,0 +1,1638 @@
+<?php
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+namespace mod_workshopbooking\privacy;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+use core_privacy\local\metadata\collection;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+use core_privacy\local\request\approved_contextlist;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+use core_privacy\local\request\contextlist;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+use core_privacy\local\request\writer;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class provider implements
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    \core_privacy\local\metadata\provider,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    \core_privacy\local\request\plugin\provider {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public static function get_metadata(collection $collection) : collection {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $collection->add_database_table('workshopbooking_signups', [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'workshopbookingid' => 'privacy:metadata',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'userid' => 'privacy:metadata',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'timecreated' => 'privacy:metadata',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ], 'privacy:metadata');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        return $collection;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public static function get_contexts_for_userid(int $userid) : contextlist {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $sql = "SELECT ctx.id
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  FROM {context} ctx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  JOIN {course_modules} cm ON cm.id = ctx.instanceid AND ctx.contextlevel = :ctxlevel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'workshopbooking'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  JOIN {workshopbooking} s ON s.id = cm.instance
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  JOIN {workshopbooking_signups} ss ON ss.workshopbookingid = s.id AND ss.userid = :userid";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $params = ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $contextlist = new contextlist();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $contextlist->add_from_sql($sql, $params);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        return $contextlist;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public static function export_user_data(approved_contextlist $contextlist) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        foreach ($contextlist as $context) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            $cm = get_coursemodule_from_id('workshopbooking', $context->instanceid);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            if (!$cm) { continue; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            $signup = $DB->get_record('workshopbooking_signups', [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                'workshopbookingid' => $cm->instance,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                'userid' => $contextlist->get_user()->id
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            ]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            if ($signup) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                writer::with_context($context)->export_data([], (object) [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    'signedup' => userdate($signup->timecreated)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                ]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public static function delete_data_for_all_users_in_context(\context $context) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if ($context->contextlevel !== CONTEXT_MODULE) { return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $cm = get_coursemodule_from_id('workshopbooking', $context->instanceid);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if ($cm) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            $DB->delete_records('workshopbooking_signups', ['workshopbookingid' => $cm->instance]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public static function delete_data_for_user(approved_contextlist $contextlist) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        global $DB;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        $userid = $contextlist->get_user()->id;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        foreach ($contextlist as $context) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            if ($context->contextlevel !== CONTEXT_MODULE) { continue; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            $cm = get_coursemodule_from_id('workshopbooking', $context->instanceid);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            if ($cm) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                $DB->delete_records('workshopbooking_signups', [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    'workshopbookingid' => $cm->instance,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    'userid' => $userid
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                ]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1114 @@
+<?php
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+defined('MOODLE_INTERNAL') || die();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$capabilities = [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    'mod/workshopbooking:view' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'riskbitmask' => RISK_PERSONAL,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'captype' => 'read',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'contextlevel' => CONTEXT_MODULE,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'archetypes' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'guest' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'student' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'teacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'editingteacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'manager' => CAP_ALLOW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ],
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    'mod/workshopbooking:signup' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'captype' => 'write',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'contextlevel' => CONTEXT_MODULE,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'archetypes' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'student' => CAP_ALLOW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ],
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    'mod/workshopbooking:manage' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'captype' => 'write',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'contextlevel' => CONTEXT_MODULE,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'archetypes' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'teacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'editingteacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'manager' => CAP_ALLOW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    'mod/workshopbooking:viewparticipants' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'captype' => 'read',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'contextlevel' => CONTEXT_MODULE,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'archetypes' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'teacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'editingteacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'manager' => CAP_ALLOW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ],
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    'mod/workshopbooking:export' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'captype' => 'read',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'contextlevel' => CONTEXT_MODULE,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        'archetypes' => [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'teacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'editingteacher' => CAP_ALLOW,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            'manager' => CAP_ALLOW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+];

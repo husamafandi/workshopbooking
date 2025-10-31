@@ -1,0 +1,113 @@
+<?php
+$string['modulename'] = 'Workshop booking';
+$string['modulenameplural'] = 'Workshop sign‑ups';
+$string['pluginname'] = 'Workshop booking';
+$string['pluginadministration'] = 'Workshop sign‑up administration';
+$string['name'] = 'Name';
+$string['availability'] = 'Availability';
+$string['signupstart'] = 'Signup opens';
+$string['signupend'] = 'Signup closes';
+$string['from'] = 'From';
+$string['to'] = 'to';
+$string['maxparticipants'] = 'Maximum participants';
+$string['maxparticipants_help'] = '0 means no limit.';
+$string['signup'] = 'Sign up';
+$string['cancel'] = 'Cancel signup';
+$string['signedup'] = 'You are signed up.';
+$string['canceled'] = 'Your signup was canceled.';
+$string['cannot_signup'] = 'Signup not possible.';
+$string['cannot_cancel'] = 'Cancelation not possible.';
+$string['full'] = 'Fully booked';
+$string['notopen'] = 'Signup is not open.';
+$string['participants'] = 'Participants';
+$string['signedupon'] = 'Signed up on';
+$string['noparticipants'] = 'No participants yet.';
+$string['limit_reached'] = 'Bookings: {$a}';
+$string['limit_unlimited'] = 'Bookings: {$a} (unlimited)';
+$string['privacy:metadata'] = 'Workshop sign‑up stores minimal signup data.';
+$string['none'] = 'No activities found.';
+$string['exportcsv'] = 'Export participants (CSV)';
+$string['actions'] = 'Actions';
+
+// Capabilities
+$string['workshopbooking:viewparticipants'] = 'View participants list';
+$string['workshopbooking:export'] = 'Export participant list';
+
+// Help (only HTML link)
+$string['modulename_help'] = '<p><strong>Workshop booking</strong> streamlines session management. 
+Participants see all available sessions with date and time (“14 October 2025 from 08:00 to 10:00”) and can sign up or cancel with one click.</p>
+<p><strong>Participant view:</strong> Only open sessions are offered; full or closed slots show a notice. After signing up a status and a cancel button are shown. Group filters and seat counts are reflected per session.</p>
+<p><strong>Trainer view:</strong> Management tools include group filter, CSV export, confirm/unconfirm and remove booking. The attendee list respects the selected group; the CSV export uses the same filter.</p>
+<p><strong>Recurring sessions:</strong> Configure <em>series start</em> (recurstart), <em>number of sessions</em> (recurcount) and <em>interval in days</em> (recurintervaldays). A button generates/updates the sessions automatically.</p>
+<p><strong>Times & duration:</strong> Use <em>AM start hour</em> (vmstarthour) and <em>PM start hour</em> (nmstarthour). <em>Duration per session (hours)</em> defines the end time and the display uses “from … to …”.</p>
+<p><strong>Capacity:</strong> Set <em>min/max seats</em> (capacitymin/capacitymax). When max is reached sign‑ups are blocked. Confirmed seats are counted separately when confirmation is used.</p>
+<p><strong>Signup window (optional):</strong> With <em>opens</em> and <em>closes</em> you limit when bookings are possible.</p>
+<p><strong>Groups:</strong> Sessions can be linked to a course group. Trainers can filter by group; export respects the selection. “Repair groups” resets orphaned group IDs to “All groups”.</p>
+<p><strong>Capabilities:</strong> Participants need <code>mod/workshopbooking:signup</code>; trainers additionally need <code>mod/workshopbooking:manage</code> for actions, export and series.</p>
+<p><strong>Compatibility:</strong> Tested with Moodle 4.1.</p>
+<p><span style="color:#6b7280"><strong>Developer:</strong> Husam Afandi</span></p>';
+$string['pluginname_help'] = $string['modulename_help'];
+
+// Manage signups
+$string['removesignup'] = 'Remove signup';
+$string['signupremoved'] = 'Signup removed.';
+$string['cannot_remove'] = 'Could not remove signup.';
+
+$string['allgroups_local'] = 'All groups';
+
+$string['recurhdr'] = 'Recurrence & limits';
+$string['recurenabled'] = 'Enable recurrence (generate sessions)';
+$string['recurstart'] = 'Series start date';
+$string['recurcount'] = 'Number of occurrences';
+$string['recurintervaldays'] = 'Interval (days)';
+$string['durationdays'] = 'Session duration (days)';
+$string['vmstarthour'] = 'Morning start hour (VM)';
+$string['nmstarthour'] = 'Afternoon start hour (NM)';
+$string['capacitymin'] = 'Minimum participants per session';
+$string['capacitymax'] = 'Maximum participants per session';
+$string['maxbookingsperuser'] = 'Max confirmed workshops per user';
+$string['bookopenoffsetdays'] = 'Booking opens (days before start)';
+$string['bookcloseoffsetdays'] = 'Booking closes (days before start)';
+$string['task_process_sessions'] = 'Process workshopbooking sessions (promote waitlist)';
+$string['btn_generate_series'] = 'Generate/refresh 14-day series';
+$string['nosessions'] = 'No sessions defined yet.';
+$string['session'] = 'Session';
+$string['dates'] = 'Dates';
+$string['slot'] = 'Slot';
+$string['capacity'] = 'Capacity';
+$string['booking'] = 'Booking';
+$string['signup'] = 'Sign up';
+$string['signedup_confirmed'] = 'You are signed up (confirmed).';
+$string['signedup_waitlist'] = 'You are on the waitlist.';
+$string['status_booked'] = 'Booked';
+$string['seriesgenerated'] = 'Series generated/refreshed.';
+$string['maxbookingsreached'] = 'You have reached the maximum number of workshops.';
+$string['bookingnotopen'] = 'Booking is not open yet.';
+$string['bookingclosed'] = 'Booking is closed.';
+
+$string['schemafixed'] = 'Database schema verified/repaired.';
+
+$string['btn_participants'] = 'View participants';
+$string['btn_exportcsv'] = 'Export CSV';
+$string['participants_heading'] = 'Registered participants';
+$string['col_session'] = 'Session';
+$string['col_slot'] = 'Slot';
+$string['col_date'] = 'Start';
+$string['col_date_end'] = 'End';
+$string['col_user'] = 'Participant';
+$string['col_email'] = 'Email';
+$string['col_userid'] = 'User ID';
+$string['col_username'] = 'Username';
+$string['col_created'] = 'Created';
+$string['col_status'] = 'Status';
+$string['status_confirmed'] = 'Confirmed';
+$string['status_waitlist'] = 'Waitlist';
+
+
+$string['filter_group'] = 'Course group';
+$string['all_groups'] = 'All groups';
+$string['apply_filter'] = 'Filter';
+$string['csv_for_filter'] = 'Export CSV (this filter)';
+
+
+$string['btn_groupfilter'] = 'Group filter';

@@ -1,0 +1,77 @@
+<?php
+
+
+
+
+
+
+require(__DIR__.'/../../config.php');
+
+
+
+
+
+
+
+
+
+
+
+
+
+$id = required_param('id', PARAM_INT);
+
+
+
+
+
+
+
+
+
+
+
+
+
+// If sesskey missing, don't error; redirect to view with sesskey appended.
+
+
+
+
+
+
+$cm = get_coursemodule_from_id('workshopbooking', $id, 0, false, MUST_EXIST);
+
+
+
+
+
+
+require_login(null, false, $cm);
+
+
+
+
+
+
+
+
+
+
+
+
+
+$url = new moodle_url('/mod/workshopbooking/view.php', ['id' => $id, 'action' => 'signup', 'sesskey' => sesskey()]);
+
+
+
+
+
+
+redirect($url);
+
+
+
+
+
+

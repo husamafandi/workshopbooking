@@ -1,0 +1,777 @@
+<?php
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+require(__DIR__.'/../../config.php');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$id = required_param('id', PARAM_INT); // Course ID.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$course = $DB->get_record('course', ['id' => $id], '*', MUST_EXIST);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+require_login($course);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$PAGE->set_url(new moodle_url('/mod/workshopbooking/index.php', ['id' => $id]));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$PAGE->set_title(format_string($course->shortname) . ': ' . get_string('modulenameplural', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$PAGE->set_heading($course->fullname);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$instances = get_all_instances_in_course('workshopbooking', $course);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$output = $PAGE->get_renderer('core');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+echo $output->header();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+echo $output->heading(get_string('modulenameplural', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if (!$instances) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    echo $output->notification(get_string('none', 'mod_workshopbooking'));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    echo $output->footer();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    exit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$table = new html_table();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$table->head = [get_string('name'), get_string('availability', 'mod_workshopbooking')];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+foreach ($instances as $cm) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    $instance = $DB->get_record('workshopbooking', ['id' => $cm->instance]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    $link = html_writer::link(new moodle_url('/mod/workshopbooking/view.php', ['id' => $cm->coursemodule]), format_string($cm->name));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    $avail = [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    if (!empty($instance->signupstart)) { $avail[] = userdate($instance->signupstart); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    if (!empty($instance->signupend)) { $avail[] = userdate($instance->signupend); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    $table->data[] = [$link, implode(' – ', $avail)];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+echo html_writer::table($table);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+echo $output->footer();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
